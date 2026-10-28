@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.tsbuildinfo
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/
+e2e/package-lock.json
+e2e/failure-*.png
+e2e/*.png
+.claude/
+.env
+.env.*
+.DS_Store
+*.log

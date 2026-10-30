@@ -1,0 +1,79 @@
+spring:
+  application:
+    name: racehorse-backend
+  mvc:
+    contentnegotiation:
+      media-types:
+        glb: model/gltf-binary
+  servlet:
+    multipart:
+      # Photo (10 MB, TECH-035) and video (200 MB, TECH-055) limits are enforced by the services with a Vietnamese
+      # message; the container allows slightly more than the largest.
+      max-file-size: 210MB
+      max-request-size: 220MB
+      # Large parts go to a temporary file instead of memory.
+      file-size-threshold: 1MB
+  datasource:
+    # DATABASE_URL or the PG* variables of a hosting platform are turned into these three values by
+    # vn.racehorse.deploy.DatabaseEnvironmentPostProcessor when DB_URL is not set (TECH-109).
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/racehorse}
+    username: ${DB_USER:racehorse}
+    password: ${DB_PASSWORD:racehorse}
+    hikari:
+      # Wait for a database that is still starting instead of exiting at once (platforms start services in parallel).
+      initialization-fail-timeout: ${DB_WAIT_MS:60000}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  flyway:
+    enabled: true
+
+server:
+  port: ${PORT:8080}
+  # "native" behind a platform proxy so HTTPS and the client address are recognised; the Docker image sets it (TECH-110).
+  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
+        # true on HTTPS (the Docker image sets it); false for local http://localhost.
+        secure: ${SESSION_COOKIE_SECURE:false}
+  compression:
+    enabled: ${SERVER_COMPRESSION_ENABLED:false}
+    mime-types: text/html,text/css,application/javascript,text/javascript,application/json,image/svg+xml,model/gltf-binary
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+springdoc:
+  api-docs:
+    path: /api/openapi
+    # SPRINGDOC_ENABLED=false in production (the Docker image sets it).
+    enabled: ${SPRINGDOC_ENABLED:true}
+
+# Club settings (NFR-007): local time zone used to display times and evaluate time-based rules.
+club:
+  time-zone: ${CLUB_TIME_ZONE:Asia/Ho_Chi_Minh}
+
+# First Club Manager account, created only when no Club Manager exists (TECH-006).
+app:
+  bootstrap:
+    username: ${BOOTSTRAP_USERNAME:admin}
+    password: ${BOOTSTRAP_PASSWORD:}
+    display-name: ${BOOTSTRAP_DISPLAY_NAME:Quản lý CLB}
+  # Trial-run video files, outside the database (TECH-005, TECH-052).
+  video:
+    dir: ${VIDEO_DIR:./data/videos}
+  # Horse photos (BR-184), kept next to the videos and backed up with them (TECH-179).
+  photo:
+    dir: ${PHOTO_DIR:./data/photos}

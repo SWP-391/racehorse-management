@@ -1,0 +1,7 @@
+target/
+data/
+.claude/
+.env
+.env.*
+.DS_Store
+*.log

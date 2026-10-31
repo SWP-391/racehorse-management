@@ -1,4 +1,4 @@
-package vn.racehorse.common;
+package vn.racehorse.common.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 

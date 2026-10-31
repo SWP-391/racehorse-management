@@ -1,4 +1,4 @@
-package vn.racehorse.deploy;
+package vn.racehorse.deploy.config;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;

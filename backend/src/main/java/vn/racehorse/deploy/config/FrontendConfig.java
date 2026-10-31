@@ -1,4 +1,4 @@
-package vn.racehorse.deploy;
+package vn.racehorse.deploy.config;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Conditional;

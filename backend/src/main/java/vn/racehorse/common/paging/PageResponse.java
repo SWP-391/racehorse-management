@@ -1,4 +1,4 @@
-package vn.racehorse.common;
+package vn.racehorse.common.paging;
 
 import java.util.List;
 

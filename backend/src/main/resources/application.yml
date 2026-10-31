@@ -15,7 +15,7 @@ spring:
       file-size-threshold: 1MB
   datasource:
     # DATABASE_URL or the PG* variables of a hosting platform are turned into these three values by
-    # vn.racehorse.deploy.DatabaseEnvironmentPostProcessor when DB_URL is not set (TECH-109).
+    # vn.racehorse.deploy.config.DatabaseEnvironmentPostProcessor when DB_URL is not set (TECH-109).
     url: ${DB_URL:jdbc:postgresql://localhost:5432/racehorse}
     username: ${DB_USER:racehorse}
     password: ${DB_PASSWORD:racehorse}
@@ -60,6 +60,15 @@ springdoc:
     path: /api/openapi
     # SPRINGDOC_ENABLED=false in production (the Docker image sets it).
     enabled: ${SPRINGDOC_ENABLED:true}
+  # The interactive page follows the same switch (TECH-201); it sits under /api so client routes never catch it (TECH-202).
+  swagger-ui:
+    enabled: ${SPRINGDOC_ENABLED:true}
+    path: /api/swagger-ui
+    # Write calls from the page carry X-XSRF-TOKEN copied from the XSRF-TOKEN cookie (TECH-204).
+    csrf:
+      enabled: true
+    tags-sorter: alpha
+    operations-sorter: alpha
 
 # Club settings (NFR-007): local time zone used to display times and evaluate time-based rules.
 club:

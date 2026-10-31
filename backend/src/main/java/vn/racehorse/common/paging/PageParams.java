@@ -1,6 +1,7 @@
-package vn.racehorse.common;
+package vn.racehorse.common.paging;
 
 import org.springframework.http.HttpStatus;
+import vn.racehorse.common.exception.ApiException;
 
 import java.util.Map;
 

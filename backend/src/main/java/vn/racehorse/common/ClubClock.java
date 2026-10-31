@@ -2,6 +2,7 @@ package vn.racehorse.common;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import vn.racehorse.common.config.ClubProperties;
 
 import java.time.Clock;
 import java.time.Instant;

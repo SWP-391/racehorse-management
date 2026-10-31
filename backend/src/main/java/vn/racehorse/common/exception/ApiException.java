@@ -1,4 +1,4 @@
-package vn.racehorse.common;
+package vn.racehorse.common.exception;
 
 import org.springframework.http.HttpStatus;
 

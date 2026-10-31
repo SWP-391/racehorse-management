@@ -1,4 +1,4 @@
-package vn.racehorse.common;
+package vn.racehorse.common.exception;
 
 import java.util.Map;
 

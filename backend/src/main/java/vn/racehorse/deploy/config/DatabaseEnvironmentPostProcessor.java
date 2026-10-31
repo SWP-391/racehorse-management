@@ -1,4 +1,4 @@
-package vn.racehorse.deploy;
+package vn.racehorse.deploy.config;
 
 import org.apache.commons.logging.Log;
 import org.springframework.boot.SpringApplication;

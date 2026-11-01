@@ -28,6 +28,7 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'VIEW_CHORES',
     'VIEW_BARN',
     'VIEW_SCHEDULES',
+    'VIEW_OWN_TIMETABLE',
   ],
   VETERINARIAN: [
     'COMPOSE_RATION',
@@ -62,6 +63,7 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'VIEW_SUPPLIES',
     'PROPOSE_RESTOCK',
     'VIEW_SCHEDULES',
+    'VIEW_OWN_TIMETABLE',
   ],
   HORSE_OWNER: [
     'VIEW_RATION',
@@ -72,6 +74,7 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'VIEW_CHORES',
     'VIEW_BARN',
     'VIEW_BILLING',
+    'EXPORT_BILLING',
   ],
   CLUB_MANAGER: [
     'VIEW_RATION',
@@ -101,6 +104,7 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'VIEW_STOCK',
     'SET_PRICES_AND_CLOSE_MONTH',
     'VIEW_BILLING',
+    'EXPORT_BILLING',
   ],
 };
 

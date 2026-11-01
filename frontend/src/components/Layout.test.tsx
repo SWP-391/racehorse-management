@@ -32,7 +32,7 @@ describe('role-aware navigation (task 7.1, BR-091)', () => {
 
   test('Head Trainer sees horses, health and the progress board', () => {
     renderAs('HEAD_TRAINER', <Layout />);
-    expect(menu()).toEqual(['Ngựa', 'Sức khỏe', 'Tiến độ', 'Việc hằng ngày', 'Chuồng trại']);
+    expect(menu()).toEqual(['Ngựa', 'Sức khỏe', 'Tiến độ', 'Việc hằng ngày', 'Chuồng trại', 'Thời gian biểu']);
   });
 
   test('Veterinarian sees horses, health, care and incidents', () => {
@@ -47,7 +47,7 @@ describe('role-aware navigation (task 7.1, BR-091)', () => {
 
   test('Groom sees incident reports and the sessions assigned to them (PERM-032)', () => {
     renderAs('GROOM', <Layout />);
-    expect(menu()).toEqual(['Sự cố', 'Việc hằng ngày', 'Chuồng trại', 'Vật tư', 'Buổi tập được giao']);
+    expect(menu()).toEqual(['Sự cố', 'Việc hằng ngày', 'Chuồng trại', 'Vật tư', 'Thời gian biểu', 'Buổi tập được giao']);
   });
 });
 

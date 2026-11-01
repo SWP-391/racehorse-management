@@ -1,4 +1,4 @@
-import { request } from './client';
+import { download, request } from './client';
 import type {
   Account,
   AssignableGrooms,
@@ -14,6 +14,7 @@ import type {
   HealthStatus,
   Horse,
   HorseHealth,
+  ClosingStatus,
   HorseInput,
   Inbox,
   Indicators,
@@ -51,6 +52,7 @@ import type {
   ChoreCode,
   ChoreDay,
   HealthSummary,
+  ChoreDaySummary,
   ChoreRangeHorse,
   CareType,
   DueState,
@@ -66,6 +68,8 @@ import type {
   Stall,
   SupplyInput,
   SupplyItem,
+  SupplyUnit,
+  Timetable,
   StockMovement,
   ExpectedReceipt,
   Medicine,
@@ -74,6 +78,7 @@ import type {
   InvoiceRow,
   PriceList,
   Statement,
+  BillingOverview,
   StatementOwnerRow,
 } from './types';
 
@@ -114,7 +119,7 @@ export const api = {
   options: (kind: OptionKind, query: ListQuery & { role?: Role } = {}) =>
     request<Page<OptionItem>>('GET', `/api/options/${kind}${listQs({ size: 20, ...query })}`),
 
-  horses: (query: ListQuery & { ownerId?: number; area?: string; archived?: boolean; trainerId?: number; noTrainer?: boolean } = {}) =>
+  horses: (query: ListQuery & { ownerId?: number; area?: string; archived?: boolean; trainerId?: number; noTrainer?: boolean; readiness?: Readiness } = {}) =>
     request<Page<Horse>>('GET', `/api/horses${listQs(query)}`),
   uploadHorsePhoto: (id: number, file: File) => {
     const form = new FormData();
@@ -297,6 +302,8 @@ export const api = {
     request<ChoreDay>('GET', `/api/chores${listQs({ ...query, date })}`),
   choreRange: (query: ListQuery & { from?: string; to?: string; horseId?: number } = {}) =>
     request<Page<ChoreRangeHorse>>('GET', `/api/chores/range${listQs(query)}`),
+  choreDays: (query: ListQuery & { from?: string; to?: string; horseId?: number } = {}) =>
+    request<Page<ChoreDaySummary>>('GET', `/api/chores/days${listQs(query)}`),
   backfillChore: (input: { horseId: number; chore: ChoreCode; date: string; reason: string }) =>
     request<ChoreState>('POST', '/api/chores/backfill', input),
   markChore: (horseId: number, chore: ChoreCode, date: string) =>
@@ -327,6 +334,11 @@ export const api = {
 
   supplies: (query: ListQuery & { category?: string; active?: boolean } = {}) =>
     request<Page<SupplyItem>>('GET', `/api/supplies${listQs(query)}`),
+  supplyUnits: () => request<SupplyUnit[]>('GET', '/api/supply-units'),
+  addSupplyUnit: (name: string) => request<SupplyUnit>('POST', '/api/supply-units', { name }),
+  renameSupplyUnit: (id: number, name: string) => request<SupplyUnit>('PUT', `/api/supply-units/${id}`, { name }),
+  setSupplyUnitActive: (id: number, active: boolean) =>
+    request<SupplyUnit>('POST', `/api/supply-units/${id}/${active ? 'activate' : 'deactivate'}`, {}),
   createSupply: (input: SupplyInput) => request<SupplyItem>('POST', '/api/supplies', clean(input)),
   updateSupply: (id: number, input: SupplyInput) => request<SupplyItem>('PUT', `/api/supplies/${id}`, clean(input)),
   setSupplyPrice: (id: number, price: number) =>
@@ -360,7 +372,10 @@ export const api = {
   priceList: () => request<PriceList>('GET', '/api/billing/prices'),
   setPrice: (kind: 'DAILY_FEE' | 'EXAM_FEE', feeTypeId: number | null, amount: number, effectiveFrom: string) =>
     request<PriceList>('POST', '/api/billing/prices', { kind, feeTypeId, amount, effectiveFrom }),
-  createFeeType: (name: string) => request<{ id: number; name: string }>('POST', '/api/billing/fee-types', { name }),
+  /** A fee type is created with its first price in one step (BR-207, AC-453). */
+  createFeeType: (name: string, amount: number, effectiveFrom: string) =>
+    request<{ id: number; name: string }>('POST', '/api/billing/fee-types', { name, amount, effectiveFrom }),
+  billingOverview: (month: string) => request<BillingOverview>('GET', `/api/billing/overview?month=${month}`),
   deactivateFeeType: (id: number) => request<{ id: number }>('POST', `/api/billing/fee-types/${id}/deactivate`),
   examFeeTypes: () => request<FeeTypeOption[]>('GET', '/api/exam-fee-types'),
   myStatement: (month: string) => request<Statement>('GET', `/api/billing/my-statement?month=${month}`),
@@ -373,6 +388,13 @@ export const api = {
   /** Photo version by horse id for the horses the viewer may see and that have a photo (avatars in lists, BR-184). */
   horsePhotoVersions: () => request<Record<string, number>>('GET', '/api/horses/photo-versions'),
   invoice: (id: number) => request<Statement>('GET', `/api/billing/invoices/${id}`),
+  closingStatus: (month: string) => request<ClosingStatus>('GET', `/api/billing/months/${month}/closing`),
+  myTimetable: (from: string, to: string) => request<Timetable>('GET', `/api/my-timetable?from=${from}&to=${to}`),
+  /** Excel downloads (PERM-057): the file name comes from the service. */
+  exportAllStatements: (month: string) => download(`/api/billing/statements/export?month=${month}`),
+  exportOwnerStatement: (ownerId: number, month: string) => download(`/api/billing/statements/${ownerId}/export?month=${month}`),
+  exportMyStatement: (month: string) => download(`/api/billing/my-statement/export?month=${month}`),
+  exportInvoice: (id: number) => download(`/api/billing/invoices/${id}/export`),
   closeMonth: (month: string) =>
     request<{ month: string; invoices: number; total: number }>('POST', `/api/billing/months/${month}/close`),
   addAdjustment: (input: AdjustmentInput) => request<void>('POST', '/api/billing/adjustments', clean(input)),

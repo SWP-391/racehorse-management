@@ -273,9 +273,9 @@ describe('typed inputs (input-validation)', () => {
         <DateInput aria-label="Ngày sinh" max="2026-10-31" value="" onChange={() => undefined} />
       </>,
     );
-    expect(screen.getByLabelText('Mặc định')).toHaveAttribute('min', '1990-01-01');
-    expect(screen.getByLabelText('Mặc định')).toHaveAttribute('max', '2100-12-31');
-    expect(screen.getByLabelText('Ngày sinh')).toHaveAttribute('max', '2026-10-31');
+    expect(screen.getByLabelText('Mặc định')).toHaveAttribute('data-min', '1990-01-01');
+    expect(screen.getByLabelText('Mặc định')).toHaveAttribute('data-max', '2100-12-31');
+    expect(screen.getByLabelText('Ngày sinh')).toHaveAttribute('data-max', '2026-10-31');
   });
 
   test('a text field and a textarea have a length limit unless the page sets the service\'s own', () => {

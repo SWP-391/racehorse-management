@@ -284,3 +284,20 @@
   border-top-width: 0;
   padding-top: 0;
 }
+
+/* The day picker of DateInput takes the application's colours (BR-206). */
+.rdp-root {
+  --rdp-accent-color: var(--primary);
+  --rdp-accent-background-color: color-mix(in oklab, var(--primary) 12%, transparent);
+  --rdp-day-height: 2.5rem;
+  --rdp-day-width: 2.5rem;
+  --rdp-day_button-height: 2.375rem;
+  --rdp-day_button-width: 2.375rem;
+  --rdp-selected-border: 2px solid var(--primary);
+  font-size: 0.875rem;
+}
+.rdp-root .rdp-dropdown { color: var(--foreground); background: var(--card); }
+.rdp-root .rdp-today:not(.rdp-selected) .rdp-day_button { font-weight: 700; color: var(--primary); }
+.rdp-root .rdp-button_previous,
+.rdp-root .rdp-button_next { color: var(--foreground); }
+.rdp-root .rdp-chevron { fill: currentColor; }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } f
 import * as PopoverPrimitive from '@radix-ui/react-popover';
 import { Check, ChevronDown, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { fold } from '@/lib/text';
 import { vi } from '@/i18n/vi';
 import type { OptionItem, Page } from '@/api/types';
 import { messageOf } from '../ErrorText';
@@ -30,13 +31,6 @@ interface SearchSelectProps {
 }
 
 const DEBOUNCE_MS = 250;
-
-const fold = (text: string) =>
-  text
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/gi, 'd')
-    .toLowerCase();
 
 /**
  * Feeds a SearchSelect from a list the screen already holds (a catalog, the Grooms who are free): searches without

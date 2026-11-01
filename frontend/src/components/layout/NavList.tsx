@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
-import { BookOpen, CalendarCheck, ClipboardCheck, HeartPulse, House, Package, Receipt, ScrollText, Settings, Siren, Syringe, TrendingUp, Users } from 'lucide-react';
+import { BookOpen, CalendarCheck, CalendarDays, ClipboardCheck, HeartPulse, House, Package, Receipt, ScrollText, Settings, Siren, Syringe, TrendingUp, Users } from 'lucide-react';
 import type { Permission } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { SECTIONS } from '../../routes/access';
@@ -25,6 +25,7 @@ const DECOR: Record<string, { label: string; icon: LucideIcon }> = {
   '/barn': { label: vi.nav.barn, icon: House },
   '/supplies': { label: vi.nav.supplies, icon: Package },
   '/billing': { label: vi.nav.billing, icon: Receipt },
+  '/timetable': { label: vi.nav.timetable, icon: CalendarDays },
   '/my-sessions': { label: vi.nav.mySessions, icon: CalendarCheck },
   '/accounts': { label: vi.nav.accounts, icon: Users },
   '/audit': { label: vi.nav.audit, icon: ScrollText },

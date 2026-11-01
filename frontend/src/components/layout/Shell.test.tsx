@@ -42,3 +42,17 @@ describe('ledger shell (task 3.1)', () => {
     await vitest.waitFor(() => expect(h1).toHaveFocus());
   });
 });
+
+describe('timetable menu entry (PERM-056)', () => {
+  test.each([
+    ['GROOM', true],
+    ['HEAD_TRAINER', true],
+    ['VETERINARIAN', false],
+    ['HORSE_OWNER', false],
+    ['CLUB_MANAGER', false],
+  ] as const)('%s sees the entry: %s', (role, shown) => {
+    renderAs(role, <Layout />);
+    const links = screen.queryAllByRole('link', { name: 'Thời gian biểu' });
+    expect(links.length > 0).toBe(shown);
+  });
+});

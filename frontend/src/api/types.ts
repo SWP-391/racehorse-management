@@ -35,6 +35,8 @@ export type Permission =
   | 'MANAGE_TRIAL_VIDEOS'
   | 'WATCH_TRIAL_VIDEOS'
   | 'VIEW_ASSIGNED_SESSIONS'
+  | 'VIEW_OWN_TIMETABLE'
+  | 'EXPORT_BILLING'
   | 'ACKNOWLEDGE_ASSIGNMENT'
   | 'CONFIGURE_LATE_CHANGE_THRESHOLD'
   | 'CONFIGURE_THRESHOLDS'
@@ -114,6 +116,7 @@ export interface RationMealInput {
 export type HealthStatus = 'ELIGIBLE' | 'UNDER_OBSERVATION' | 'INJURED' | 'QUARANTINED';
 export const HEALTH_STATUSES: HealthStatus[] = ['ELIGIBLE', 'UNDER_OBSERVATION', 'INJURED', 'QUARANTINED'];
 export type Readiness = 'READY' | 'UNDER_OBSERVATION' | 'NOT_READY';
+export const READINESS_VALUES: Readiness[] = ['READY', 'UNDER_OBSERVATION', 'NOT_READY'];
 export type LockKind = 'MANUAL' | 'AUTOMATIC' | 'INTAKE';
 export type ReturnLevel = 'RESUME_AS_IS' | 'RESUME_WITH_ADJUSTMENT';
 export type Activity = 'IDLE' | 'TRAINING';
@@ -224,6 +227,8 @@ export interface Horse {
   temporaryTrainer: { id: number; displayName: string; until: string } | null;
   /** True when the signed-in user is the assigned trainer: the client shows write controls from this (BR-153). */
   canWrite: boolean;
+  /** Health status for a role that may read health (PERM-020), else null (BR-209). */
+  healthStatus?: HealthStatus | null;
 }
 
 export interface TrainerRef {
@@ -234,7 +239,6 @@ export interface TrainerRef {
 
 export interface HorseInput {
   name: string;
-  registrationNumber: string;
   sex: Sex | '';
   birthDate: string;
   coatColour: string;
@@ -681,6 +685,14 @@ export interface ChoreDay {
   total: number;
 }
 
+/** One day of the chore history: horses listed, chores they had and how many were done (BR-188, BR-209). */
+export interface ChoreDaySummary {
+  date: string;
+  horses: number;
+  chores: number;
+  done: number;
+}
+
 export interface ChoreRangeHorse {
   horseId: number;
   horseName: string;
@@ -751,6 +763,7 @@ export interface SupplyItem {
   name: string;
   category: SupplyCategory;
   unit: string;
+  unitId: number;
   active: boolean;
   quantity?: number;
   unitPrice?: number;
@@ -761,10 +774,18 @@ export interface SupplyItem {
   expectedQuantity?: number;
 }
 
+/** A unit of the catalog supplies are counted in (BR-194); renamed or deactivated, never deleted. */
+export interface SupplyUnit {
+  id: number;
+  name: string;
+  active: boolean;
+  itemCount: number;
+}
+
 export interface SupplyInput {
   name: string;
   category: SupplyCategory | '';
-  unit: string;
+  unitId: number | '';
   /** Required when adding; the price is changed by its own action afterwards. */
   price?: number | '';
   /** Only when adding: the opening stock becomes the first ledger line. */
@@ -889,10 +910,24 @@ export interface Statement {
   ownerName: string | null;
   total: number;
   horses: StatementHorse[];
+  /** The total of each category across horses, computed by the service (BR-203). */
+  categories: { category: string; total: number }[];
   invoiceId: number | null;
   invoiceNumber: string | null;
+  /** When the month was closed; null while it is open. */
+  closedAt: string | null;
   /** The daily fee is created after each day, so a running statement shows it up to yesterday. */
   dailyFeeThrough: string;
+}
+
+/** What the Club Manager's billing overview draws; every figure is summed by the service (BR-180, BR-209). */
+export interface BillingOverview {
+  scope: string;
+  total: number;
+  owners: number;
+  months: { month: string; total: number }[];
+  categories: { category: string; total: number }[];
+  topOwners: { ownerId: number; ownerName: string; total: number }[];
 }
 
 export interface StatementOwnerRow {
@@ -919,4 +954,40 @@ export interface AdjustmentInput {
   date: string;
   amount: number | '';
   reason: string;
+}
+
+export type ClosingState = 'READY' | 'CLOSED' | 'NOT_FINISHED' | 'FEES_PENDING' | 'PREVIOUS_MONTH_OPEN';
+
+/** Whether a month can be closed now and the reason when it cannot (BR-205). */
+export interface ClosingStatus {
+  month: string;
+  state: ClosingState;
+  openMonth: string | null;
+  message: string | null;
+}
+
+export interface TimetableItem {
+  id: number;
+  horseId: number;
+  horseName: string;
+  startTime: string | null;
+  plannedEnd: string | null;
+  endsNextDay: boolean;
+  type: string;
+  state: string;
+  /** Only in a Head Trainer's timetable. */
+  groomName: string | null;
+}
+
+export interface TimetableDay {
+  date: string;
+  barnHours: { weekday: number; start: string; end: string }[];
+  leave: { late: boolean; reason: string | null } | null;
+  items: TimetableItem[];
+}
+
+export interface Timetable {
+  from: string;
+  to: string;
+  days: TimetableDay[];
 }

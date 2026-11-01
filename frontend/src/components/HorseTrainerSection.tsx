@@ -9,7 +9,8 @@ import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Badge, DefinitionList, Section } from './ui/display';
 import { FormField } from './ui/form-field';
-import { Input } from './ui/input';
+import { DateInput } from './ui/typed-inputs';
+import { collect, date, focusFirstInvalid, required, today } from '../lib/validate';
 import { SearchSelect, type Chosen } from './ui/search-select';
 import { Callout } from './ui/states';
 
@@ -54,8 +55,14 @@ export default function HorseTrainerSection({ horse, onChanged }: { horse: Horse
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    if (!trainer) {
-      setFieldErrors({ trainerId: vi.horses.required });
+    // The end of a loan is a day after today (BR-156), checked here before the service is asked.
+    const refused = collect({
+      trainerId: trainer ? null : vi.horses.required,
+      ...(mode === 'lend' ? { until: required(until) ?? date(until, { min: today(1) }) } : {}),
+    });
+    setFieldErrors(refused);
+    if (!trainer || Object.keys(refused).length > 0) {
+      focusFirstInvalid(e.currentTarget as HTMLFormElement);
       return;
     }
     void run(
@@ -135,7 +142,7 @@ export default function HorseTrainerSection({ horse, onChanged }: { horse: Horse
             </FormField>
             {mode === 'lend' && (
               <FormField label={`${vi.assign.until} *`} error={fieldErrors.until}>
-                <Input type="date" value={until} onChange={(e) => setUntil(e.target.value)} />
+                <DateInput min={today(1)} value={until} onChange={setUntil} />
               </FormField>
             )}
             <DialogFooter>

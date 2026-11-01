@@ -64,3 +64,33 @@ describe('an ended session (BR-191, TECH-126)', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 });
+
+describe('an answer that is not the service\'s JSON (TECH-200)', () => {
+  const html = (status: number) => new Response('<html>Bad gateway</html>', { status, headers: { 'Content-Type': 'text/html' } });
+
+  test('an HTML error page is an ApiError with the status, not a SyntaxError', async () => {
+    vitest.stubGlobal('fetch', vitest.fn().mockResolvedValue(html(502)));
+    await expect(request('GET', '/api/horses')).rejects.toMatchObject({ status: 502, code: 'HTTP_502', message: 'Đã có lỗi xảy ra. Vui lòng thử lại.' });
+  });
+
+  test('an HTML page with status 200 is a malformed answer', async () => {
+    vitest.stubGlobal('fetch', vitest.fn().mockResolvedValue(html(200)));
+    await expect(request('GET', '/api/auth/me')).rejects.toMatchObject({ code: 'MALFORMED_RESPONSE' });
+  });
+
+  test('an empty 200 answer is not an error', async () => {
+    vitest.stubGlobal('fetch', vitest.fn().mockResolvedValue(new Response('', { status: 200 })));
+    await expect(request('GET', '/api/horses')).resolves.toBeUndefined();
+  });
+
+  test('a refused 401 with an HTML body still ends the session', async () => {
+    vitest.stubGlobal('fetch', vitest.fn().mockResolvedValue(html(401)));
+    await expect(request('GET', '/api/horses')).rejects.toBeInstanceOf(ApiError);
+    expect(handler).toHaveBeenCalledWith(null);
+  });
+
+  test('a network failure is an ApiError with status 0', async () => {
+    vitest.stubGlobal('fetch', vitest.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    await expect(request('GET', '/api/horses')).rejects.toMatchObject({ status: 0, code: 'NETWORK_ERROR' });
+  });
+});

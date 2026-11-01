@@ -1,6 +1,6 @@
 import appSource from '../App.tsx?raw';
 import { meAs } from '../test/render';
-import { canOpen, homeFor, ROUTE_ACCESS } from './access';
+import { canOpen, homeFor, ROUTE_ACCESS, SECTIONS } from './access';
 
 describe('route access table (BR-191, BR-091, TECH-127)', () => {
   test('every route declared in App.tsx has an access entry', () => {
@@ -34,5 +34,21 @@ describe('route access table (BR-191, BR-091, TECH-127)', () => {
     expect(homeFor(meAs('HEAD_TRAINER'))).toBe('/horses');
     expect(homeFor(meAs('GROOM'))).toBe('/incidents');
     expect(homeFor({ ...meAs('GROOM'), permissions: [] })).toBe('/none');
+  });
+
+  test.each(['HEAD_TRAINER', 'VETERINARIAN', 'GROOM', 'HORSE_OWNER', 'CLUB_MANAGER'] as const)(
+    '%s home is a page the role may open and the first one of its menu',
+    (role) => {
+      const me = meAs(role);
+      const home = homeFor(me);
+      expect(canOpen(me, home)).toBe(true);
+      expect(home).toBe(SECTIONS.find((s) => s.any.some((p) => me.permissions.includes(p)))!.path);
+    },
+  );
+
+  test('a role whose only section is not horses, incidents or accounts still lands on that section', () => {
+    expect(homeFor({ ...meAs('HORSE_OWNER'), permissions: ['VIEW_BILLING'] })).toBe('/billing');
+    expect(homeFor({ ...meAs('GROOM'), permissions: ['VIEW_ASSIGNED_SESSIONS', 'VIEW_SUPPLIES'] })).toBe('/supplies');
+    expect(homeFor({ ...meAs('CLUB_MANAGER'), permissions: ['VIEW_AUDIT_LOG'] })).toBe('/audit');
   });
 });

@@ -18,6 +18,7 @@ export const SECTIONS: RouteAccess[] = [
   { path: '/barn', any: ['VIEW_BARN'] },
   { path: '/supplies', any: ['VIEW_SUPPLIES'] },
   { path: '/billing', any: ['VIEW_BILLING'] },
+  { path: '/timetable', any: ['VIEW_OWN_TIMETABLE'] },
   { path: '/my-sessions', any: ['VIEW_ASSIGNED_SESSIONS'] },
   { path: '/accounts', any: ['MANAGE_ACCOUNTS'] },
   { path: '/audit', any: ['VIEW_AUDIT_LOG'] },
@@ -35,6 +36,7 @@ const DETAIL_ROUTES: RouteAccess[] = [
   { path: '/plans/:planId/edit', any: ['MANAGE_PLANS'] },
   { path: '/plans/:id', any: ['VIEW_PLANS'] },
   { path: '/sessions/:id', any: ['VIEW_PLANS'] },
+  { path: '/billing/print/:kind/:id', any: ['VIEW_BILLING'] },
 ];
 
 export const ROUTE_ACCESS: RouteAccess[] = [...DETAIL_ROUTES, ...SECTIONS];
@@ -46,13 +48,7 @@ export function canOpen(me: Me, path: string): boolean {
   return !!entry && entry.any.some((p) => me.permissions.includes(p));
 }
 
-/** The page a role starts on. */
+/** The page a role starts on: the first menu section it may open, `/none` only when it may open none (BR-191). */
 export function homeFor(me: Me): string {
-  return me.permissions.includes('VIEW_HORSES')
-    ? '/horses'
-    : me.permissions.includes('SEND_INCIDENTS')
-      ? '/incidents'
-      : me.permissions.includes('MANAGE_ACCOUNTS')
-        ? '/accounts'
-        : '/none';
+  return SECTIONS.find((s) => s.any.some((p) => me.permissions.includes(p)))?.path ?? '/none';
 }

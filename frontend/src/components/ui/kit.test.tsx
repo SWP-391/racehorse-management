@@ -5,7 +5,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { vi as vitest } from 'vitest';
 import { Button } from './button';
 import { FormField } from './form-field';
-import { Input } from './input';
+import { Input, Textarea } from './input';
+import { DateInput, NumberInput } from './typed-inputs';
 import { Select } from './select';
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from './dialog';
 import { DataView } from './data-view';
@@ -13,6 +14,7 @@ import { DataTable } from './data-table';
 import { EmptyState } from './states';
 import { useLoad } from '@/hooks/useLoad';
 import { Chart } from '../chart/Chart';
+import { DetailPopup } from './detail-popup';
 import { Inbox } from 'lucide-react';
 
 describe('kit inputs (task 2.3)', () => {
@@ -240,5 +242,90 @@ describe('kit chart (task 2.6)', () => {
     expect(rows[1]).toHaveTextContent('01/10');
     expect(rows[1]).toHaveTextContent('3');
     expect(rows[2]).toHaveTextContent('Mô phỏng');
+  });
+});
+
+describe('typed inputs (input-validation)', () => {
+  test('NumberInput carries its range, step and unit', () => {
+    render(<NumberInput aria-label="Cân nặng" min={100} max={1500} unit="kg" value="450" onChange={() => undefined} />);
+    const input = screen.getByLabelText('Cân nặng');
+    expect(input).toHaveAttribute('type', 'number');
+    expect(input).toHaveAttribute('min', '100');
+    expect(input).toHaveAttribute('max', '1500');
+    expect(input).toHaveAttribute('step', 'any');
+    expect(input).toHaveAttribute('data-unit', 'kg');
+    expect(screen.getByText('kg')).toBeInTheDocument();
+  });
+
+  test('NumberInput with integer takes step 1 and reports the typed text', async () => {
+    const onChange = vitest.fn();
+    render(<NumberInput aria-label="Khoảng" integer min={1} max={9} value="" onChange={onChange} />);
+    const input = screen.getByLabelText('Khoảng');
+    expect(input).toHaveAttribute('step', '1');
+    await userEvent.type(input, '4');
+    expect(onChange).toHaveBeenCalledWith('4');
+  });
+
+  test('DateInput has plausible bounds unless the page narrows them', () => {
+    render(
+      <>
+        <DateInput aria-label="Mặc định" value="" onChange={() => undefined} />
+        <DateInput aria-label="Ngày sinh" max="2026-10-31" value="" onChange={() => undefined} />
+      </>,
+    );
+    expect(screen.getByLabelText('Mặc định')).toHaveAttribute('min', '1990-01-01');
+    expect(screen.getByLabelText('Mặc định')).toHaveAttribute('max', '2100-12-31');
+    expect(screen.getByLabelText('Ngày sinh')).toHaveAttribute('max', '2026-10-31');
+  });
+
+  test('a text field and a textarea have a length limit unless the page sets the service\'s own', () => {
+    render(
+      <>
+        <Input aria-label="Tên" />
+        <Input aria-label="Tên ngựa" maxLength={200} />
+        <Textarea aria-label="Mô tả" />
+        <Input aria-label="Mật khẩu" type="password" />
+      </>,
+    );
+    expect(screen.getByLabelText('Tên')).toHaveAttribute('maxlength', '255');
+    expect(screen.getByLabelText('Tên ngựa')).toHaveAttribute('maxlength', '200');
+    expect(screen.getByLabelText('Mô tả')).toHaveAttribute('maxlength', '2000');
+    expect(screen.getByLabelText('Mật khẩu')).not.toHaveAttribute('maxlength');
+  });
+});
+
+describe('detail popup never opens as an empty frame (BR-198, AC-395, AC-398)', () => {
+  async function open(props: Partial<React.ComponentProps<typeof DetailPopup>>) {
+    render(
+      <DetailPopup title="Xu hướng" subject="Sao Mai" {...props}>
+        <p>Nội dung</p>
+      </DetailPopup>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: /Xu hướng — Sao Mai/ }));
+    return screen.getByRole('dialog');
+  }
+
+  test('AC-395 empty: the popup says what is empty', async () => {
+    const dialog = await open({ empty: true, emptyText: 'Chưa có dữ liệu xu hướng.' });
+    expect(within(dialog).getByText('Chưa có dữ liệu xu hướng.')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Nội dung')).not.toBeInTheDocument();
+  });
+
+  test('AC-398 loading shows a loading state', async () => {
+    const dialog = await open({ loading: true });
+    expect(within(dialog).getByLabelText('Đang tải…')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Nội dung')).not.toBeInTheDocument();
+  });
+
+  test('AC-398 failure shows the error with a retry', async () => {
+    const onRetry = vitest.fn();
+    const dialog = await open({ error: 'Mất kết nối', onRetry });
+    expect(within(dialog).getByText('Mất kết nối')).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Thử lại' }));
+    expect(onRetry).toHaveBeenCalled();
+  });
+
+  test('with content the children show', async () => {
+    expect(within(await open({})).getByText('Nội dung')).toBeInTheDocument();
   });
 });

@@ -10,6 +10,8 @@ import { notify } from '../lib/notify';
 import { Button } from './ui/button';
 import { FormField } from './ui/form-field';
 import { Input } from './ui/input';
+import { DateInput } from './ui/typed-inputs';
+import { blank, collect, date, focusFirstInvalid, maxLength, required, today } from '../lib/validate';
 import { FileInput } from './ui/file-input';
 import { Select } from './ui/select';
 import { SearchSelect, type Chosen } from './ui/search-select';
@@ -19,7 +21,6 @@ import { useDelayedFlag } from '../hooks/useDelayedFlag';
 
 const EMPTY: HorseInput = {
   name: '',
-  registrationNumber: '',
   sex: '',
   birthDate: '',
   coatColour: '',
@@ -47,6 +48,7 @@ export default function HorseForm({ horseId, onSaved, onCancel, onName }: HorseF
   const editing = id !== undefined;
   const [form, setForm] = useState<HorseInput>(EMPTY);
   const [loaded, setLoaded] = useState(!editing);
+  const [number, setNumber] = useState<string | null>(null);
   const [owner, setOwner] = useState<Chosen | null>(null);
   const [trainer, setTrainer] = useState<Chosen | null>(null);
   const [photo, setPhoto] = useState<File | null>(null);
@@ -65,9 +67,9 @@ export default function HorseForm({ horseId, onSaved, onCancel, onName }: HorseF
         .horse(id)
         .then((h) => {
           onName?.(h.name);
+          setNumber(h.registrationNumber);
           setForm({
             name: h.name,
-            registrationNumber: h.registrationNumber,
             sex: h.sex,
             birthDate: h.birthDate,
             coatColour: h.coatColour ?? '',
@@ -121,7 +123,21 @@ export default function HorseForm({ horseId, onSaved, onCancel, onName }: HorseF
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    setFieldErrors({});
+    // The same rules the service applies (BR-003), checked first so nothing is sent for a value it would refuse.
+    const refused = collect({
+      name: required(form.name) ?? maxLength(form.name, 200),
+      sex: required(form.sex),
+      birthDate: required(form.birthDate) ?? date(form.birthDate, { notFuture: true }),
+      coatColour: maxLength(form.coatColour, 100),
+      breed: maxLength(form.breed, 100),
+      ownerId: required(form.ownerId),
+      trainerId: blank(form.trainerId) ? vi.assign.trainerRequired : null,
+    });
+    setFieldErrors(refused);
+    if (Object.keys(refused).length > 0) {
+      focusFirstInvalid(e.currentTarget as HTMLFormElement);
+      return;
+    }
     setPending(true);
     const body = {
       ...form,
@@ -172,11 +188,14 @@ export default function HorseForm({ horseId, onSaved, onCancel, onName }: HorseF
             <legend className="mb-4 font-display text-h2">{vi.horses.identity}</legend>
             <div className="grid gap-5 md:grid-cols-2">
               <FormField label={`${vi.horses.name} *`} error={fieldErrors.name} className="md:col-span-2">
-                <Input value={form.name} onChange={(e) => update({ name: e.target.value })} />
+                <Input maxLength={200} value={form.name} onChange={(e) => update({ name: e.target.value })} />
               </FormField>
-              <FormField label={`${vi.horses.registrationNumber} *`} error={fieldErrors.registrationNumber}>
-                <Input value={form.registrationNumber} onChange={(e) => update({ registrationNumber: e.target.value })} />
-              </FormField>
+              {editing && number && (
+                <div>
+                  <p className="text-meta text-muted-foreground">{vi.horses.registrationNumber}</p>
+                  <p className="tabular text-base">{number}</p>
+                </div>
+              )}
               <FormField label={`${vi.horses.sex} *`} error={fieldErrors.sex}>
                 <Select value={form.sex} onChange={(e) => update({ sex: e.target.value as HorseInput['sex'] })}>
                   <option value="">—</option>
@@ -185,13 +204,13 @@ export default function HorseForm({ horseId, onSaved, onCancel, onName }: HorseF
                 </Select>
               </FormField>
               <FormField label={`${vi.horses.birthDate} *`} error={fieldErrors.birthDate}>
-                <Input type="date" value={form.birthDate} onChange={(e) => update({ birthDate: e.target.value })} />
+                <DateInput max={today()} value={form.birthDate} onChange={(v) => update({ birthDate: v })} />
               </FormField>
               <FormField label={vi.horses.coatColour}>
-                <Input value={form.coatColour} onChange={(e) => update({ coatColour: e.target.value })} />
+                <Input maxLength={100} value={form.coatColour} onChange={(e) => update({ coatColour: e.target.value })} />
               </FormField>
               <FormField label={vi.horses.breed} className="md:col-span-2">
-                <Input value={form.breed} onChange={(e) => update({ breed: e.target.value })} />
+                <Input maxLength={100} value={form.breed} onChange={(e) => update({ breed: e.target.value })} />
               </FormField>
             </div>
           </fieldset>

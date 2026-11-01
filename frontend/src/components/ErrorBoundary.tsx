@@ -6,7 +6,7 @@ import { vi } from '@/i18n/vi';
  * Catches a render error or a failed route chunk so the person sees a message with a retry instead of a blank page.
  * `resetKey` (the path) clears the error on navigation.
  */
-export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: string }, { error: Error | null }> {
+export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: string; compact?: boolean }, { error: Error | null }> {
   state: { error: Error | null } = { error: null };
 
   static getDerivedStateFromError(error: Error) {
@@ -23,6 +23,8 @@ export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: s
 
   render() {
     if (!this.state.error) return this.props.children;
+    // A part of the shell (the bell) that fails shows nothing of its own: the rest of the page keeps working.
+    if (this.props.compact) return null;
     return (
       <div className="mx-auto max-w-xl p-6">
         <ErrorState message={vi.common.unexpectedError} onRetry={() => window.location.reload()} />

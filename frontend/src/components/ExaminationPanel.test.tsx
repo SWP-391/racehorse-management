@@ -26,14 +26,37 @@ const recorded = {
 };
 
 describe('examinations and weights (task 5.1)', () => {
-  test('AC-078 an empty diagnosis is refused and named', async () => {
+  test('AC-078 an empty diagnosis is refused and named, and nothing is sent', async () => {
     vitest.mocked(api.examinations).mockResolvedValue(pageOf([]));
-    vitest.mocked(api.recordExamination).mockRejectedValue(
-      new ApiError(400, 'VALIDATION_FAILED', 'Thông tin khám chưa hợp lệ.', { diagnosis: 'Bắt buộc nhập chẩn đoán.' }),
-    );
+    vitest.mocked(api.recordExamination).mockReset();
     renderAs('VETERINARIAN', <ExaminationPanel horseId={9} archived={false} />);
     await userEvent.click(await screen.findByRole('button', { name: 'Ghi nhận lần khám' }));
     expect(screen.getByLabelText(/^Chẩn đoán/)).toHaveAccessibleDescription(/Bắt buộc nhập chẩn đoán\./);
+    expect(api.recordExamination).not.toHaveBeenCalled();
+  });
+
+  test('a weight outside the plausible range is refused on the field and carries its unit', async () => {
+    vitest.mocked(api.examinations).mockResolvedValue(pageOf([]));
+    vitest.mocked(api.recordExamination).mockReset();
+    renderAs('VETERINARIAN', <ExaminationPanel horseId={9} archived={false} />);
+    await userEvent.type(await screen.findByLabelText(/^Chẩn đoán/), 'Sưng khớp gối');
+    const weight = screen.getByLabelText(/^Cân nặng/);
+    expect(weight).toHaveAttribute('data-unit', 'kg');
+    await userEvent.type(weight, '45');
+    await userEvent.click(screen.getByRole('button', { name: 'Ghi nhận lần khám' }));
+    expect(weight).toHaveAccessibleDescription('Giá trị tối thiểu là 100.');
+    expect(api.recordExamination).not.toHaveBeenCalled();
+  });
+
+  test('the service\'s own refusal is still shown on the field', async () => {
+    vitest.mocked(api.examinations).mockResolvedValue(pageOf([]));
+    vitest.mocked(api.recordExamination).mockReset().mockRejectedValue(
+      new ApiError(400, 'VALIDATION_FAILED', 'Thông tin khám chưa hợp lệ.', { bodyRegion: 'Vùng cơ thể không có trong danh mục.' }),
+    );
+    renderAs('VETERINARIAN', <ExaminationPanel horseId={9} archived={false} />);
+    await userEvent.type(await screen.findByLabelText(/^Chẩn đoán/), 'Sưng khớp gối');
+    await userEvent.click(screen.getByRole('button', { name: 'Ghi nhận lần khám' }));
+    expect(await screen.findByText('Vùng cơ thể không có trong danh mục.')).toBeInTheDocument();
   });
 
   test('AC-117 the Head Trainer reads the details but has no recording form', async () => {

@@ -14,6 +14,9 @@ import { DataView } from './ui/data-view';
 import { Section } from './ui/display';
 import { FormField } from './ui/form-field';
 import { Input } from './ui/input';
+import { NumberInput } from './ui/typed-inputs';
+import { LIMITS } from '../lib/limits';
+import { BOUNDS, blank, collect, focusFirstInvalid, maxLength, number } from '../lib/validate';
 import { Select } from './ui/select';
 import { Callout, EmptyState } from './ui/states';
 import { notify } from '../lib/notify';
@@ -60,7 +63,18 @@ export default function ExaminationPanel({ horseId, archived }: { horseId: numbe
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    setFieldErrors({});
+    const refused = collect({
+      diagnosis: blank(form.diagnosis) ? 'Bắt buộc nhập chẩn đoán.' : maxLength(form.diagnosis, LIMITS.longText),
+      bodyDetail: maxLength(form.bodyDetail, LIMITS.longText),
+      weightKg: number(form.weightKg, BOUNDS.weightKg),
+      treatment: maxLength(form.treatment, LIMITS.longText),
+      prescription: maxLength(form.prescription, LIMITS.longText),
+    });
+    setFieldErrors(refused);
+    if (Object.keys(refused).length > 0) {
+      focusFirstInvalid(e.currentTarget as HTMLFormElement);
+      return;
+    }
     setPending(true);
     try {
       await api.recordExamination(horseId, form);
@@ -119,7 +133,7 @@ export default function ExaminationPanel({ horseId, archived }: { horseId: numbe
       {can('RECORD_EXAMINATIONS') && !archived && (
         <form onSubmit={submit} noValidate aria-label={vi.vet.newExam} className="grid gap-4 md:max-w-3xl md:grid-cols-2">
           <FormField label={`${vi.vet.diagnosis} *`} error={fieldErrors.diagnosis} className="md:col-span-2">
-            <Input value={form.diagnosis} onChange={(e) => setForm({ ...form, diagnosis: e.target.value })} />
+            <Input maxLength={LIMITS.longText} value={form.diagnosis} onChange={(e) => setForm({ ...form, diagnosis: e.target.value })} />
           </FormField>
           <RegionSelect
             regions={regions}
@@ -127,19 +141,21 @@ export default function ExaminationPanel({ horseId, archived }: { horseId: numbe
             onChange={(bodyRegion) => setForm({ ...form, bodyRegion })}
             error={fieldErrors.bodyRegion}
           />
-          <FormField label={vi.vet.bodyDetail}>
-            <Input value={form.bodyDetail} onChange={(e) => setForm({ ...form, bodyDetail: e.target.value })} />
+          <FormField label={vi.vet.bodyDetail} error={fieldErrors.bodyDetail}>
+            <Input maxLength={LIMITS.longText} value={form.bodyDetail} onChange={(e) => setForm({ ...form, bodyDetail: e.target.value })} />
           </FormField>
           <FormField label={vi.vet.weight} error={fieldErrors.weightKg}>
-            <Input
-              type="number"
-              step="0.1"
+            <NumberInput
+              {...BOUNDS.weightKg}
+              step={0.1}
+              unit="kg"
+              unitInLabel
               value={form.weightKg}
-              onChange={(e) => setForm({ ...form, weightKg: e.target.value === '' ? '' : Number(e.target.value) })}
+              onChange={(v) => setForm({ ...form, weightKg: v === '' ? '' : Number(v) })}
             />
           </FormField>
-          <FormField label={vi.vet.treatment}>
-            <Input value={form.treatment} onChange={(e) => setForm({ ...form, treatment: e.target.value })} />
+          <FormField label={vi.vet.treatment} error={fieldErrors.treatment}>
+            <Input maxLength={LIMITS.longText} value={form.treatment} onChange={(e) => setForm({ ...form, treatment: e.target.value })} />
           </FormField>
           {feeOptions.length > 0 && (
             <FormField label={`${vi.vet.feeType} *`} error={fieldErrors.feeTypeId} description={vi.vet.feeTypeHint}>
@@ -156,8 +172,8 @@ export default function ExaminationPanel({ horseId, archived }: { horseId: numbe
               </Select>
             </FormField>
           )}
-          <FormField label={vi.vet.prescription} className="md:col-span-2">
-            <Input value={form.prescription} onChange={(e) => setForm({ ...form, prescription: e.target.value })} />
+          <FormField label={vi.vet.prescription} error={fieldErrors.prescription} className="md:col-span-2">
+            <Input maxLength={LIMITS.longText} value={form.prescription} onChange={(e) => setForm({ ...form, prescription: e.target.value })} />
           </FormField>
           <div className="md:col-span-2">
             <Button type="submit" loading={pending}>

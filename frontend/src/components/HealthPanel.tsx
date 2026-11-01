@@ -12,6 +12,7 @@ import { DataView } from './ui/data-view';
 import { DefinitionList, Section } from './ui/display';
 import { FormField } from './ui/form-field';
 import { Input } from './ui/input';
+import { DateInput } from './ui/typed-inputs';
 import { Select } from './ui/select';
 import { Callout, DetailSkeleton } from './ui/states';
 import { ReadinessBadge } from './ReadinessBadge';
@@ -149,7 +150,7 @@ export default function HealthPanel({ horseId, archived, canWrite = true }: { ho
                     <Input value={lockReason} onChange={(e) => setLockReason(e.target.value)} />
                   </FormField>
                   <FormField label={vi.health.reviewDate}>
-                    <Input type="date" value={reviewDate} onChange={(e) => setReviewDate(e.target.value)} />
+                    <DateInput value={reviewDate} onChange={setReviewDate} />
                   </FormField>
                   <div>
                     <Button

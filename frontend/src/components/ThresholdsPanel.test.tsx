@@ -1,5 +1,5 @@
 import { pageOf } from '../test/page';
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi as vitest } from 'vitest';
 import ThresholdsPanel from './ThresholdsPanel';
@@ -34,6 +34,33 @@ describe('thresholds and alerts (task 4.2, BR-052)', () => {
     expect(screen.getByText('Nhịp tim (bpm) vượt ngưỡng 100: 104 (DỮ LIỆU MÔ PHỎNG)')).toBeInTheDocument();
   });
 
+  test('a heart-rate limit outside the plausible range or a fraction is refused on the field and nothing is sent', async () => {
+    vitest.mocked(api.setThreshold).mockReset();
+    renderAs('HEAD_TRAINER', <ThresholdsPanel horseId={9} />);
+    const limit = await screen.findByLabelText('Ngưỡng');
+    expect(limit).toHaveAttribute('data-unit', 'bpm');
+    await userEvent.type(limit, '1500');
+    await userEvent.click(screen.getByRole('button', { name: 'Đặt ngưỡng' }));
+    expect(limit).toHaveAccessibleDescription('Giá trị tối đa là 300.');
+    await userEvent.clear(limit);
+    fireEvent.change(limit, { target: { value: '120.5' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Đặt ngưỡng' }));
+    expect(limit).toHaveAccessibleDescription('Hãy nhập số nguyên.');
+    expect(api.setThreshold).not.toHaveBeenCalled();
+  });
+
+  test('the speed limit is in km/h, above zero and at most 100', async () => {
+    vitest.mocked(api.setThreshold).mockReset();
+    renderAs('HEAD_TRAINER', <ThresholdsPanel horseId={9} />);
+    await userEvent.selectOptions(await screen.findByLabelText('Chỉ số'), 'SPEED');
+    const limit = screen.getByLabelText('Ngưỡng');
+    expect(limit).toHaveAttribute('data-unit', 'km/h');
+    await userEvent.type(limit, '0');
+    await userEvent.click(screen.getByRole('button', { name: 'Đặt ngưỡng' }));
+    expect(limit).toHaveAccessibleDescription('Giá trị phải lớn hơn 0.');
+    expect(api.setThreshold).not.toHaveBeenCalled();
+  });
+
   test('a Veterinarian sees alerts but cannot set thresholds', async () => {
     renderAs('VETERINARIAN', <ThresholdsPanel horseId={9} />);
     expect(await screen.findByText('Chưa có cảnh báo.')).toBeInTheDocument();
@@ -41,9 +68,22 @@ describe('thresholds and alerts (task 4.2, BR-052)', () => {
     expect(api.thresholds).not.toHaveBeenCalled();
   });
 
-  test('AC-060 an Owner sees nothing', () => {
+  test('AC-396 the Head Trainer without a threshold reads the message and gets the form', async () => {
+    renderAs('HEAD_TRAINER', <ThresholdsPanel horseId={9} />);
+    expect(await screen.findByText('Chưa đặt ngưỡng: sẽ không có cảnh báo.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Đặt ngưỡng' })).toBeInTheDocument();
+  });
+
+  test('AC-397 a Veterinarian without an alert reads the message and no lone alerts heading', async () => {
+    renderAs('VETERINARIAN', <ThresholdsPanel horseId={9} />);
+    expect(await screen.findByText('Chưa có cảnh báo.')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Cảnh báo' })).not.toBeInTheDocument();
+  });
+
+  test('AC-395 a role with nothing to set or read gets a message, not a blank frame (AC-060 for an Owner)', async () => {
     renderAs('HORSE_OWNER', <ThresholdsPanel horseId={9} />);
-    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+    expect(screen.getByText('Vai trò của bạn không đặt ngưỡng và không nhận cảnh báo.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Đặt ngưỡng' })).not.toBeInTheDocument();
     expect(api.alerts).not.toHaveBeenCalled();
   });
 

@@ -180,8 +180,9 @@ export default function InjuryPage() {
             {error}
           </Callout>
         )}
-        <div className="grid items-start gap-8 xl:grid-cols-2">
-          <div aria-label={vi.injury.viewerLabel} className="order-2 grid gap-3 xl:sticky xl:top-6 xl:order-1">
+        {/* grid-cols-1 and min-w-0: a long option in the examination select must not widen the column past the screen. */}
+        <div className="grid grid-cols-1 items-start gap-8 xl:grid-cols-2">
+          <div aria-label={vi.injury.viewerLabel} className="order-2 grid min-w-0 gap-3 xl:sticky xl:top-6 xl:order-1">
             {desktop ? (
               <>
                 <LayerToggles layers={layers} onChange={setLayers} />
@@ -200,8 +201,8 @@ export default function InjuryPage() {
               </Callout>
             )}
           </div>
-          <div className="order-1 grid gap-6 lg:order-2">
-            <div className="grid gap-4">
+          <div className="order-1 grid min-w-0 gap-6 lg:order-2">
+            <div className="grid grid-cols-1 gap-4">
               <RegionSelect
                 regions={regions}
                 value={selected ?? ''}
@@ -209,7 +210,7 @@ export default function InjuryPage() {
                 error={fieldErrors.regionCode}
               />
               {writable && (
-                <form onSubmit={create} noValidate aria-label={vi.injury.add} className="grid gap-4">
+                <form onSubmit={create} noValidate aria-label={vi.injury.add} className="grid grid-cols-1 gap-4">
                   <FormField label={vi.injury.examination} error={fieldErrors.examinationId}>
                     <Select value={examinationId} onChange={(e) => setExaminationId(e.target.value)}>
                       <option value="">{vi.injury.chooseExamination}</option>
@@ -266,7 +267,7 @@ function InjuryItem({
   onChanged: () => Promise<void>;
 }) {
   return (
-    <li aria-label={regionLabel(regions, m.regionCode)} className="grid gap-2 border-b py-4 first:pt-0">
+    <li aria-label={regionLabel(regions, m.regionCode)} className="grid grid-cols-1 gap-2 border-b py-4 first:pt-0">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <button
           type="button"

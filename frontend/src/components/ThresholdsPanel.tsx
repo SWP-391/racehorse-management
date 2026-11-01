@@ -8,10 +8,11 @@ import { vi } from '../i18n/vi';
 import { Button } from './ui/button';
 import { Section } from './ui/display';
 import { FormField } from './ui/form-field';
-import { Input } from './ui/input';
+import { NumberInput } from './ui/typed-inputs';
+import { BOUNDS, focusFirstInvalid, number } from '../lib/validate';
 import { ListFooter } from './ui/list-toolbar';
 import { Select } from './ui/select';
-import { Callout, ErrorState, Skeleton } from './ui/states';
+import { Callout, EmptyState, ErrorState, Skeleton } from './ui/states';
 import { useDelayedFlag } from '../hooks/useDelayedFlag';
 import { notify } from '../lib/notify';
 import { NoMatches, PanelSearch } from './PanelSearch';
@@ -56,7 +57,14 @@ export default function ThresholdsPanel({ horseId, canWrite = true }: { horseId:
     void load();
   }, [load]);
 
-  if (!edit && !watch) return null;
+  // A role that reaches the panel with nothing to set or read is told so, never shown a blank frame (BR-199).
+  if (!edit && !watch) {
+    return (
+      <Section title={vi.sim.thresholds} id="thresholds-section">
+        <EmptyState icon={BellOff} title={vi.sim.noAccess} />
+      </Section>
+    );
+  }
 
   if (loadState !== 'ready') {
     return (
@@ -72,6 +80,18 @@ export default function ThresholdsPanel({ horseId, canWrite = true }: { horseId:
 
   async function save(value: number | null, m: Measure) {
     setError(null);
+    // An empty limit clears the threshold; a value must be plausible for the measure (design D6).
+    const refused =
+      value === null
+        ? null
+        : m === 'HEART_RATE'
+          ? number(value, { ...BOUNDS.heartRateBpm, integer: true })
+          : number(value, { positive: true, max: BOUNDS.speedKmh.max });
+    if (refused) {
+      setFieldErrors({ limit: refused });
+      focusFirstInvalid();
+      return;
+    }
     setFieldErrors({});
     setPending(true);
     try {
@@ -128,7 +148,11 @@ export default function ThresholdsPanel({ horseId, canWrite = true }: { horseId:
               </Select>
             </FormField>
             <FormField label={vi.sim.limit} error={fieldErrors.limit}>
-              <Input type="number" value={limit} onChange={(e) => setLimit(e.target.value === '' ? '' : Number(e.target.value))} />
+              {measure === 'HEART_RATE' ? (
+                <NumberInput integer {...BOUNDS.heartRateBpm} unit="bpm" value={limit} onChange={(v) => setLimit(v === '' ? '' : Number(v))} />
+              ) : (
+                <NumberInput min={0} max={BOUNDS.speedKmh.max} step={0.1} unit="km/h" value={limit} onChange={(v) => setLimit(v === '' ? '' : Number(v))} />
+              )}
             </FormField>
           </div>
           <div>

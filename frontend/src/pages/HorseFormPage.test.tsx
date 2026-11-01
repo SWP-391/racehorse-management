@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi as vitest } from 'vitest';
 import HorseFormPage from './HorseFormPage';
@@ -7,12 +7,14 @@ import { api } from '../api/api';
 import { ApiError } from '../api/client';
 import { pageOf } from '../test/page';
 import { notify } from '../lib/notify';
+import { today } from '../lib/validate';
 
 vitest.mock('../api/api', () => ({
   api: { options: vitest.fn(), horse: vitest.fn(), registerHorse: vitest.fn(), updateHorse: vitest.fn(), uploadHorsePhoto: vitest.fn() },
 }));
 
 beforeEach(() => {
+  vitest.mocked(api.registerHorse).mockReset();
   // One mock for both selects: owners and trainers come from the same endpoint with another kind (BR-186).
   vitest.mocked(api.options).mockImplementation((kind) =>
     Promise.resolve(
@@ -25,7 +27,6 @@ beforeEach(() => {
 
 async function fillAndSubmit() {
   await userEvent.type(screen.getByLabelText(/^Tên ngựa/), 'Sao Mai');
-  await userEvent.type(screen.getByLabelText(/^Số đăng ký/), 'VN-001');
   await userEvent.selectOptions(screen.getByLabelText(/^Giới tính/), 'FEMALE');
   // The owner is chosen from the Club Manager's accounts with a search select, not typed (BR-186).
   await userEvent.click(await screen.findByRole('combobox', { name: /^Chủ sở hữu/ }));
@@ -58,25 +59,57 @@ describe('horse form (task 7.4, BR-002, BR-003)', () => {
     expect((await screen.findAllByText('Bắt buộc chọn HLV phụ trách.')).length).toBeGreaterThan(0);
   });
 
-  test('AC-004 missing birth date: the field is named', async () => {
-    vitest.mocked(api.registerHorse).mockRejectedValue(
-      new ApiError(400, 'VALIDATION_FAILED', 'Thông tin chưa hợp lệ: birthDate.', { birthDate: 'Bắt buộc nhập.' }),
+  test('no active Head Trainer: the trainer list says nobody can be chosen and the horse is not saved', async () => {
+    vitest.mocked(api.options).mockImplementation((kind) =>
+      Promise.resolve(kind === 'trainers' ? pageOf([]) : pageOf([{ id: 3, label: 'Chủ ngựa B', hint: 'owner' }])),
     );
+    renderAs('CLUB_MANAGER', <HorseFormPage />, '/horses/new', '/horses/new');
+    await userEvent.type(await screen.findByLabelText(/^Ngày sinh/), '2021-04-12');
+    await userEvent.click(await screen.findByRole('combobox', { name: /^HLV phụ trách/ }));
+    expect(await screen.findByText('Không có lựa chọn nào')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Lưu' }));
+    expect((await screen.findAllByText('Bắt buộc chọn HLV phụ trách.')).length).toBeGreaterThan(0);
+    expect(api.registerHorse).not.toHaveBeenCalled();
+  });
+
+  test('AC-004 missing birth date: the field is named and nothing is sent', async () => {
     renderAs('CLUB_MANAGER', <HorseFormPage />, '/horses/new', '/horses/new');
     await fillAndSubmit();
     expect(screen.getByLabelText(/^Ngày sinh/)).toHaveAccessibleDescription(/Bắt buộc nhập./);
-    expect(vitest.mocked(api.registerHorse).mock.calls[0][0]).toMatchObject({ birthDate: null, ownerId: 3 });
+    expect(api.registerHorse).not.toHaveBeenCalled();
   });
 
-  test('AC-003 duplicate registration number: the duplicate horse is named under the field', async () => {
-    const message = 'Số đăng ký đã được dùng cho ngựa "Gió Bắc".';
-    vitest.mocked(api.registerHorse).mockRejectedValue(
-      new ApiError(409, 'DUPLICATE_REGISTRATION', message, { registrationNumber: message }),
-    );
+  test('every missing mandatory field is named at once, the first takes focus and nothing is sent', async () => {
     renderAs('CLUB_MANAGER', <HorseFormPage />, '/horses/new', '/horses/new');
-    await userEvent.type(screen.getByLabelText(/^Ngày sinh/), '2021-04-12');
+    await userEvent.click(await screen.findByRole('button', { name: 'Lưu' }));
+    for (const label of [/^Tên ngựa/, /^Giới tính/, /^Ngày sinh/]) {
+      expect(screen.getByLabelText(label)).toHaveAttribute('aria-invalid', 'true');
+    }
+    await waitFor(() => expect(screen.getByLabelText(/^Tên ngựa/)).toHaveFocus());
+    expect(api.registerHorse).not.toHaveBeenCalled();
+  });
+
+  test('a birth date in the future is refused on the field and nothing is sent', async () => {
+    renderAs('CLUB_MANAGER', <HorseFormPage />, '/horses/new', '/horses/new');
+    const birth = await screen.findByLabelText(/^Ngày sinh/);
+    expect(birth).toHaveAttribute('max', today());
+    await userEvent.type(birth, today(2));
     await fillAndSubmit();
-    expect(screen.getByLabelText(/^Số đăng ký/)).toHaveAccessibleDescription(/Gió Bắc/);
+    expect(birth).toHaveAccessibleDescription(/không được ở tương lai/);
+    expect(api.registerHorse).not.toHaveBeenCalled();
+  });
+
+  test('text fields carry the service\'s own length limits', async () => {
+    renderAs('CLUB_MANAGER', <HorseFormPage />, '/horses/new', '/horses/new');
+    expect(await screen.findByLabelText(/^Tên ngựa/)).toHaveAttribute('maxlength', '200');
+    expect(screen.getByLabelText(/^Màu lông/)).toHaveAttribute('maxlength', '100');
+    expect(screen.getByLabelText(/^Giống/)).toHaveAttribute('maxlength', '100');
+  });
+
+  test('AC-382 the registration form has no number field: the system gives it', async () => {
+    renderAs('CLUB_MANAGER', <HorseFormPage />, '/horses/new', '/horses/new');
+    await screen.findByLabelText(/^Tên ngựa/);
+    expect(screen.queryByLabelText(/^Số đăng ký/)).not.toBeInTheDocument();
   });
 
   test('AC-005 a Head Trainer cannot open the form', () => {

@@ -5,6 +5,7 @@ import { Toaster } from 'sonner';
 import { useAuth } from '../auth/AuthContext';
 import { vi } from '../i18n/vi';
 import NotificationBell from './NotificationBell';
+import { ErrorBoundary } from './ErrorBoundary';
 import { NavList } from './layout/NavList';
 import { Wordmark } from './layout/Wordmark';
 import { Button } from './ui/button';
@@ -119,7 +120,9 @@ export default function Layout() {
             </div>
             {/* PageHeader portals the page's breadcrumb here at ≥ lg (it stays in the page column on phones). */}
             <div id={TOPBAR_CRUMBS_ID} className="hidden min-w-0 flex-1 lg:block" />
-            <NotificationBell />
+            <ErrorBoundary compact>
+              <NotificationBell />
+            </ErrorBoundary>
             <div className="lg:hidden">
               <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
                 <DrawerTrigger asChild>

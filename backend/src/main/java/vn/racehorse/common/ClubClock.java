@@ -26,6 +26,10 @@ public class ClubClock {
         this.clock = clock;
     }
 
+    public java.time.ZoneId zone() {
+        return club.zone();
+    }
+
     public Instant now() {
         return clock.instant();
     }

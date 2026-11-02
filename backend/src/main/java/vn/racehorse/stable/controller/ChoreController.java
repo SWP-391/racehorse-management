@@ -19,6 +19,7 @@ import vn.racehorse.common.paging.Search;
 import vn.racehorse.stable.dto.BackfillRequest;
 import vn.racehorse.stable.dto.ChoreCancelRequest;
 import vn.racehorse.stable.dto.ChoreDay;
+import vn.racehorse.stable.dto.ChoreDaySummary;
 import vn.racehorse.stable.dto.ChoreDto;
 import vn.racehorse.stable.dto.ChoreHistoryDto;
 import vn.racehorse.stable.dto.ChoreHorseRange;
@@ -58,6 +59,19 @@ public class ChoreController {
                 r.horse().getRegistrationNumber(), r.days().stream().map(d -> new DayChoresDto(d.date(),
                 d.chores().stream().map(ChoreDto::of).toList())).toList())).toList(),
                 paged.page(), paged.size(), paged.total());
+    }
+
+    /** The same history as one row per day, newest first, 20 days a page (BR-188, BR-209). */
+    @Operation(summary = "Lịch sử việc theo từng ngày")
+    @GetMapping("/chores/days")
+    public PageResponse<ChoreDaySummary> days(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) Long horseId,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String q) {
+        return service.rangeDays(from, to, horseId, PageParams.of(page, size, q));
     }
 
     @Operation(summary = "Việc trong ngày")

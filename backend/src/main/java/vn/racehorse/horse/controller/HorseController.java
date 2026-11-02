@@ -25,6 +25,7 @@ import vn.racehorse.common.paging.Paging;
 import vn.racehorse.common.paging.Search;
 import vn.racehorse.health.service.HealthService;
 import vn.racehorse.health.entity.HealthStatus;
+import vn.racehorse.health.entity.Readiness;
 import vn.racehorse.horse.dto.AncestorDto;
 import vn.racehorse.horse.dto.AncestorRef;
 import vn.racehorse.horse.dto.ArchiveRequest;
@@ -75,6 +76,11 @@ public class HorseController {
     }
 
     private HorseDto dto(Horse h) {
+        return dto(h, null);
+    }
+
+    /** `healthStatus` is filled on the list for a caller who may read health (PERM-020), else null (BR-209). */
+    private HorseDto dto(Horse h, HealthStatus healthStatus) {
         AccountPrincipal user = access.current();
         UserAccount effective = trainers.effectiveTrainer(h);
         return new HorseDto(h.getId(), h.getName(), h.getRegistrationNumber(), h.getSex(), h.getBirthDate(),
@@ -84,7 +90,7 @@ public class HorseController {
                 TrainerRef.of(effective), TrainerRef.of(h.getMainTrainer()),
                 h.getTempTrainer() == null ? null
                         : new LoanRef(h.getTempTrainer().getId(), h.getTempTrainer().getDisplayName(), h.getTempUntil()),
-                trainers.canWrite(h, user) && !h.isArchived());
+                trainers.canWrite(h, user) && !h.isArchived(), healthStatus);
     }
 
     /** Paged and searchable by name, registration number and owner; the service already reduces it to what the caller may see. */
@@ -99,13 +105,21 @@ public class HorseController {
                                        @RequestParam(required = false) Boolean archived,
                                        @RequestParam(required = false) Long trainerId,
                                        @RequestParam(required = false) Long areaId,
-                                       @RequestParam(required = false) Boolean noTrainer) {
+                                       @RequestParam(required = false) Boolean noTrainer,
+                                       @RequestParam(required = false) Readiness readiness) {
         PageParams params = PageParams.of(page, size, q);
         // The health filter needs PERM-020, so an Owner who sends it is refused like on the health page.
-        Set<Long> withStatus = status == null ? null : health.herd().stream()
-                .filter(v -> v.health().getStatus() == status).map(v -> v.horse().getId()).collect(Collectors.toSet());
+        boolean canHealth = access.permissionsOf(access.current()).contains("VIEW_HEALTH");
+        Map<Long, HealthStatus> statusOf = status == null && !canHealth ? Map.of() : health.herd().stream()
+                .collect(Collectors.toMap(v -> v.horse().getId(), v -> v.health().getStatus(), (a, b) -> a));
+        Set<Long> withStatus = status == null ? null : statusOf.entrySet().stream()
+                .filter(e -> e.getValue() == status).map(Map.Entry::getKey).collect(Collectors.toSet());
+        // Readiness for training is read the same way as on the readiness list, so an Owner or a role without it is refused alike.
+        Set<Long> withReadiness = readiness == null ? null : health.readinessOfVisibleHorses().entrySet().stream()
+                .filter(e -> e.getValue() == readiness).map(Map.Entry::getKey).collect(Collectors.toSet());
         List<Horse> visible = service.list().stream()
                 .filter(h -> withStatus == null || withStatus.contains(h.getId()))
+                .filter(h -> withReadiness == null || withReadiness.contains(h.getId()))
                 .filter(h -> ownerId == null || h.getOwner().getId().equals(ownerId))
                 .filter(h -> area == null || area.isBlank()
                         || (h.getArea() != null && area.trim().equalsIgnoreCase(h.getArea().getName())))
@@ -116,7 +130,7 @@ public class HorseController {
                 .filter(h -> Search.matches(params.q(), h.getName(), h.getRegistrationNumber(),
                         h.getOwner().getDisplayName()))
                 .toList();
-        return Paging.page(visible.stream().map(this::dto).toList(), params);
+        return Paging.page(visible.stream().map(h -> dto(h, statusOf.get(h.getId()))).toList(), params);
     }
 
     private boolean isAssignedTo(Horse h, Long trainerId) {

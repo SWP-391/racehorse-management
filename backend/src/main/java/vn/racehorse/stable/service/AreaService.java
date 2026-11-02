@@ -48,7 +48,15 @@ public class AreaService {
 
     @Transactional(readOnly = true)
     public List<AreaRow> list() {
-        access.require(Permission.VIEW_BARN);
+        AccountPrincipal user = access.require(Permission.VIEW_BARN);
+        if (user.role() == vn.racehorse.account.entity.Role.HORSE_OWNER) {
+            // A Horse Owner is offered only the areas that hold a horse of theirs, with the count of their own (BR-006, BR-209).
+            Map<Long, Long> mine = horses.findByOwnerIdOrderByNameAsc(user.id()).stream()
+                    .filter(h -> h.getArea() != null)
+                    .collect(java.util.stream.Collectors.groupingBy(h -> h.getArea().getId(), java.util.stream.Collectors.counting()));
+            return areas.findAllByOrderByNameAsc().stream().filter(a -> mine.containsKey(a.getId()))
+                    .map(a -> new AreaRow(a, mine.get(a.getId()))).toList();
+        }
         return areas.findAllByOrderByNameAsc().stream()
                 .map(a -> new AreaRow(a, horses.countByAreaId(a.getId()))).toList();
     }

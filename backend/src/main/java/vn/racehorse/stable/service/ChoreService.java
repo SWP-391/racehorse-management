@@ -22,6 +22,7 @@ import vn.racehorse.security.AccessGuard;
 import vn.racehorse.security.AccountPrincipal;
 import vn.racehorse.security.Permission;
 import vn.racehorse.stable.dto.ChoreDay;
+import vn.racehorse.stable.dto.ChoreDaySummary;
 import vn.racehorse.stable.dto.ChoreHorseRange;
 import vn.racehorse.stable.dto.ChoreView;
 import vn.racehorse.stable.dto.DayChores;
@@ -116,6 +117,34 @@ public class ChoreService {
         AccountPrincipal user = access.require(Permission.VIEW_CHORES);
         LocalDate end = to == null ? clock.today() : to;
         LocalDate start = from == null ? end.minusDays(6) : from;
+        return Paging.page(rangeRows(user, start, end, horseId, params.q()), params);
+    }
+
+    /**
+     * The same history as one row per day, newest first, paged by day (BR-188, BR-209): how many horses were listed that
+     * day, how many chores they had and how many were done. Everything is counted by the service; the Owner counts own
+     * horses only.
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<ChoreDaySummary> rangeDays(LocalDate from, LocalDate to, Long horseId, PageParams params) {
+        AccountPrincipal user = access.require(Permission.VIEW_CHORES);
+        LocalDate end = to == null ? clock.today() : to;
+        LocalDate start = from == null ? end.minusDays(6) : from;
+        Map<LocalDate, int[]> byDay = new java.util.TreeMap<>(java.util.Comparator.reverseOrder());
+        for (ChoreHorseRange row : rangeRows(user, start, end, horseId, params.q())) {
+            for (DayChores day : row.days()) {
+                int[] count = byDay.computeIfAbsent(day.date(), k -> new int[3]);
+                count[0]++;
+                count[1] += day.chores().size();
+                count[2] += (int) day.chores().stream().filter(ChoreView::done).count();
+            }
+        }
+        List<ChoreDaySummary> rows = byDay.entrySet().stream()
+                .map(e -> new ChoreDaySummary(e.getKey(), e.getValue()[0], e.getValue()[1], e.getValue()[2])).toList();
+        return Paging.page(rows, params);
+    }
+
+    private List<ChoreHorseRange> rangeRows(AccountPrincipal user, LocalDate start, LocalDate end, Long horseId, String q) {
         if (end.isBefore(start)) {
             throw ApiException.invalid("INVALID_RANGE", "to", "Ngày kết thúc phải sau ngày bắt đầu.");
         }
@@ -137,9 +166,9 @@ public class ChoreService {
                 listedOn.computeIfAbsent(h.getId(), k -> new java.util.ArrayList<>()).add(day);
             }
         }
-        List<ChoreHorseRange> rows = horsesById.values().stream()
+        return horsesById.values().stream()
                 .filter(h -> horseId == null || h.getId().equals(horseId))
-                .filter(h -> Search.matches(params.q(), h.getName(), h.getRegistrationNumber()))
+                .filter(h -> Search.matches(q, h.getName(), h.getRegistrationNumber()))
                 .sorted(java.util.Comparator.comparing(Horse::getName, String.CASE_INSENSITIVE_ORDER)
                         .thenComparing(Horse::getId))
                 .map(h -> new ChoreHorseRange(h, listedOn.get(h.getId()).stream().map(day -> {
@@ -147,7 +176,6 @@ public class ChoreService {
                     return new DayChores(day, java.util.Arrays.stream(Chore.values()).map(c -> view(c, byChore.get(c), owner)).toList());
                 }).toList()))
                 .toList();
-        return Paging.page(rows, params);
     }
 
     private static ChoreView view(Chore chore, ChoreEntry e, boolean owner) {

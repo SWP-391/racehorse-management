@@ -38,4 +38,8 @@ public interface ChargeRepository extends JpaRepository<Charge, Long> {
     @Query("select min(c.chargeDate) from Charge c where c.voidedAt is null and c.invoiceId is null "
             + "and c.chargeDate < :before")
     java.util.Optional<LocalDate> earliestOpenBefore(@Param("before") LocalDate before);
+
+    /** The date of the oldest charge that still stands, where "all months" of the billing overview starts. */
+    @Query("select min(c.chargeDate) from Charge c where c.voidedAt is null")
+    java.util.Optional<LocalDate> earliestChargeDate();
 }

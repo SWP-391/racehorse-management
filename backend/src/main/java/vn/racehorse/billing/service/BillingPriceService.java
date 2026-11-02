@@ -101,6 +101,24 @@ public class BillingPriceService {
         audit.record(actor, "BILLING_PRICE_SET", "SERVICE_PRICE", typeId, details);
     }
 
+    /**
+     * A new fee type together with its first price, in one step: a type without a price is refused and nothing is saved,
+     * so no fee type exists that cannot be charged (BR-207, BR-178).
+     */
+    @Transactional
+    public ExamFeeType createFeeType(String name, BigDecimal amount, LocalDate effectiveFrom) {
+        access.require(Permission.SET_PRICES_AND_CLOSE_MONTH);
+        Map<String, String> errors = new LinkedHashMap<>();
+        if (amount == null) errors.put("amount", "Bắt buộc nhập giá.");
+        if (effectiveFrom == null) errors.put("effectiveFrom", "Bắt buộc nhập ngày áp dụng.");
+        if (!errors.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "Loại phí khám cần có giá.", errors);
+        }
+        ExamFeeType type = createFeeType(name);
+        setPrice(ServicePrice.Kind.EXAM_FEE, type.getId(), amount, effectiveFrom);
+        return type;
+    }
+
     @Transactional
     public ExamFeeType createFeeType(String name) {
         AccountPrincipal actor = access.require(Permission.SET_PRICES_AND_CLOSE_MONTH);

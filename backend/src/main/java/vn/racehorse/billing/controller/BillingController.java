@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import vn.racehorse.billing.dto.BillingAdjustmentRequest;
+import vn.racehorse.billing.dto.BillingOverview;
 import vn.racehorse.billing.dto.BillingPriceFeeTypeOption;
 import vn.racehorse.billing.dto.BillingPriceList;
 import vn.racehorse.billing.dto.BillingPriceRequest;
@@ -30,6 +31,7 @@ import vn.racehorse.billing.dto.InvoiceView;
 import vn.racehorse.billing.dto.Statement;
 import vn.racehorse.billing.dto.StatementOwnerRow;
 import vn.racehorse.billing.entity.ServicePrice;
+import vn.racehorse.billing.service.BillingOverviewService;
 import vn.racehorse.billing.service.BillingPriceService;
 import vn.racehorse.billing.service.InvoiceService;
 import vn.racehorse.billing.service.StatementExportService;
@@ -50,10 +52,12 @@ public class BillingController {
     private final StatementService statements;
     private final InvoiceService invoices;
     private final StatementExportService exports;
+    private final BillingOverviewService overviewService;
 
     public BillingController(BillingPriceService prices, StatementService statements, InvoiceService invoices,
-                             StatementExportService exports) {
+                             StatementExportService exports, BillingOverviewService overviewService) {
         this.exports = exports;
+        this.overviewService = overviewService;
         this.prices = prices;
         this.statements = statements;
         this.invoices = invoices;
@@ -85,7 +89,7 @@ public class BillingController {
     @PostMapping("/billing/fee-types")
     @ResponseStatus(HttpStatus.CREATED)
     public FeeTypeDto createFeeType(@RequestBody FeeTypeRequest r) {
-        return FeeTypeDto.of(prices.createFeeType(r.name()));
+        return FeeTypeDto.of(prices.createFeeType(r.name(), r.amount(), r.effectiveFrom()));
     }
 
     @Operation(summary = "Đổi tên loại phí")
@@ -113,6 +117,12 @@ public class BillingController {
     @GetMapping("/billing/my-statement")
     public Statement myStatement(@RequestParam(required = false) String month) {
         return statements.mine(month);
+    }
+
+    @Operation(summary = "Tổng quan chi phí theo tháng, hạng mục và chủ ngựa (biểu đồ)")
+    @GetMapping("/billing/overview")
+    public BillingOverview overview(@RequestParam(required = false) String month) {
+        return overviewService.overview(month);
     }
 
     @Operation(summary = "Danh sách chủ ngựa kèm bảng kê")

@@ -50,18 +50,29 @@ export default function TrendChart({ sessions, compact = false }: { sessions: Se
     </div>
   );
 
+  // A chart of nothing is an empty frame: when no done session has a form rating, say so and keep the table (BR-208).
+  const rated = sessions.filter((s) => s.form !== null && s.form !== undefined).length;
+
   return (
     <div className="grid w-full min-w-0 gap-2 md:w-72">
-      <Chart
-        kind="area"
-        title={vi.training.trend}
-        height={120}
-        categories={sessions.map((s) => s.date)}
-        series={[{ name: vi.training.form, data: sessions.map((s) => s.form), marked: sessions.map(isSimulated) }]}
-        markedLabel={vi.sim.simulatedBadge}
-        markedLegend={vi.sim.trendLegend}
-      />
-      {sessions.length < 3 && <p className="m-0 text-meta text-muted-foreground">{vi.sim.sessionsCount(sessions.length)}</p>}
+      {rated === 0 ? (
+        <p className="m-0 rounded-md border border-dashed px-3 py-6 text-center text-sm text-muted-foreground">{vi.sim.noRating}</p>
+      ) : (
+        <Chart
+          kind="area"
+          title={vi.training.trend}
+          height={120}
+          categories={sessions.map((s) => s.date)}
+          series={[{ name: vi.training.form, data: sessions.map((s) => s.form ?? null), marked: sessions.map(isSimulated) }]}
+          markedLabel={vi.sim.simulatedBadge}
+          markedLegend={vi.sim.trendLegend}
+        />
+      )}
+      {rated === 1 && sessions.length === 1 ? (
+        <p className="m-0 text-meta text-muted-foreground">{vi.sim.onlyOneSession}</p>
+      ) : (
+        sessions.length < 3 && <p className="m-0 text-meta text-muted-foreground">{vi.sim.sessionsCount(sessions.length)}</p>
+      )}
       {/* Every recorded indicator stays reachable (AC-066); intensity is categorical, so it is a table, not a series.
           In a board row (compact) it sits behind a disclosure so the row stays one line of chart, not a nested table. */}
       {compact ? (

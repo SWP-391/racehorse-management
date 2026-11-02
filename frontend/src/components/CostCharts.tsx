@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { Statement, StatementOwnerRow } from '../api/types';
+import type { BillingOverview, Statement, StatementOwnerRow } from '../api/types';
 import { useLoad } from '../hooks/useLoad';
 import { vi } from '../i18n/vi';
 import { clubMonth, formatVnd } from '../lib/utils';
@@ -80,6 +80,77 @@ export function OwnerShare({ rows, month }: { rows: StatementOwnerRow[]; month: 
     <ChartCard title={title} hint={month}>
       <Chart kind="hbar" title={title} categories={sorted.map((r) => r.ownerName)} series={[{ name: vi.billing.total, data: sorted.map((r) => million(r.total)) }]} height={Math.max(160, sorted.length * 44)} valueSuffix=" triệu ₫" />
     </ChartCard>
+  );
+}
+
+const OVERVIEW_HEIGHT = 260;
+
+/**
+ * The Club Manager's overview: four cards of the same size, whatever the month or "all" is chosen, so no chart is longer
+ * than another. Every figure is the service's (BR-180); the top owners are at most eight rows, so the bar chart always
+ * fits the same height.
+ */
+export function OverviewCharts({ overview }: { overview: BillingOverview }) {
+  const o = vi.billing.overview;
+  const all = overview.scope === 'all';
+  const card = 'h-full';
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <ChartCard title={o.byMonth} hint={all ? o.byMonthAll : o.byMonthHint}>
+        <Chart
+          kind="bar"
+          title={o.byMonth}
+          categories={overview.months.map((m) => shortMonth(m.month))}
+          series={[{ name: vi.billing.total, data: overview.months.map((m) => million(m.total)) }]}
+          height={OVERVIEW_HEIGHT}
+          valueSuffix=" triệu ₫"
+        />
+      </ChartCard>
+      <ChartCard title={o.byCategory} hint={all ? o.scopeAll : overview.scope}>
+        {overview.categories.length === 0 ? (
+          <p className="grid place-items-center text-sm text-muted-foreground" style={{ minHeight: OVERVIEW_HEIGHT }}>
+            {o.empty}
+          </p>
+        ) : (
+          <Chart
+            kind="donut"
+            title={o.byCategory}
+            categories={overview.categories.map((c) => vi.billing.categories[c.category] ?? c.category)}
+            series={[{ name: vi.billing.total, data: overview.categories.map((c) => million(c.total)) }]}
+            height={OVERVIEW_HEIGHT}
+            valueSuffix=" triệu ₫"
+          />
+        )}
+      </ChartCard>
+      <ChartCard title={o.byOwner} hint={all ? o.scopeAll : overview.scope}>
+        {overview.topOwners.length === 0 ? (
+          <p className="grid place-items-center text-sm text-muted-foreground" style={{ minHeight: OVERVIEW_HEIGHT }}>
+            {o.empty}
+          </p>
+        ) : (
+          <Chart
+            kind="hbar"
+            title={o.byOwner}
+            categories={overview.topOwners.map((r) => r.ownerName)}
+            series={[{ name: vi.billing.total, data: overview.topOwners.map((r) => million(r.total)) }]}
+            height={OVERVIEW_HEIGHT}
+            valueSuffix=" triệu ₫"
+          />
+        )}
+      </ChartCard>
+      <ChartCard title={o.summary} hint={all ? o.scopeAll : overview.scope}>
+        <dl className={`m-0 grid content-center gap-4 ${card}`} style={{ minHeight: OVERVIEW_HEIGHT }}>
+          <div>
+            <dt className="text-sm text-muted-foreground">{vi.billing.total}</dt>
+            <dd className="tabular m-0 font-display text-3xl font-bold">{formatVnd(overview.total)}</dd>
+          </div>
+          <div>
+            <dt className="text-sm text-muted-foreground">{o.owners}</dt>
+            <dd className="tabular m-0 text-2xl font-semibold">{overview.owners}</dd>
+          </div>
+        </dl>
+      </ChartCard>
+    </div>
   );
 }
 

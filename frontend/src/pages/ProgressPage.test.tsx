@@ -29,6 +29,42 @@ describe('progress board and Owner schedule (task 8.3)', () => {
     expect(within(screen.getByRole('dialog')).getByText(/Phi, 1500 m/)).toBeInTheDocument();
   });
 
+  test('AC-447 the photo and the name are centred on one line', async () => {
+    const row: BoardRow = {
+      horseId: 9, horseName: 'Sao Mai', status: 'ELIGIBLE', readiness: 'READY', locked: false, newUnexamined: true,
+      currentPlan: null, recentSessions: [], trend: [], assignedTrainer: null, canWrite: true,
+    };
+    vitest.mocked(api.progress).mockResolvedValue(pageOf([row]));
+    renderAs('HEAD_TRAINER', <ProgressPage />);
+    await screen.findByRole('link', { name: 'Sao Mai' });
+    expect(screen.getByTestId('horse-cell').className).toContain('items-center');
+  });
+
+  test('AC-445 and AC-446 the trend popup of a horse with one session, or with no form rating, is never an empty frame', async () => {
+    const done = { id: 1, date: '2026-10-20', type: 'GALLOP', distanceM: 1500, durationMin: 50, intensity: 'MEDIUM', form: null, state: 'COMPLETED' } as unknown as BoardRow['trend'][number];
+    const row: BoardRow = {
+      horseId: 9, horseName: 'Sao Mai', status: 'ELIGIBLE', readiness: 'READY', locked: false, newUnexamined: false,
+      currentPlan: null, recentSessions: [done], trend: [done], assignedTrainer: null, canWrite: true,
+    };
+    vitest.mocked(api.progress).mockResolvedValue(pageOf([row]));
+    renderAs('HEAD_TRAINER', <ProgressPage />);
+    await userEvent.click(await screen.findByRole('button', { name: /Xu hướng phong độ — Sao Mai/ }));
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByText('Chưa có điểm phong độ')).toBeInTheDocument();
+    expect(dialog.getByRole('table', { name: 'Chi tiết các buổi tập' })).toBeInTheDocument();
+  });
+
+  test('AC-395 a horse without sessions or trend opens a popup that says so', async () => {
+    const row: BoardRow = {
+      horseId: 9, horseName: 'Sao Mai', status: 'ELIGIBLE', readiness: 'READY', locked: false, newUnexamined: false,
+      currentPlan: null, recentSessions: [], trend: [], assignedTrainer: { id: 1, displayName: 'Test HEAD_TRAINER' }, canWrite: true,
+    };
+    vitest.mocked(api.progress).mockResolvedValue(pageOf([row]));
+    renderAs('HEAD_TRAINER', <ProgressPage />);
+    await userEvent.click(await screen.findByRole('button', { name: /Xu hướng phong độ — Sao Mai/ }));
+    expect(within(screen.getByRole('dialog')).getByText('Chưa có dữ liệu xu hướng.')).toBeInTheDocument();
+  });
+
   test('AC-290 the board shows every horse with its trainer and a toggle narrows it to the horses of the user', async () => {
     const mineRow: BoardRow = {
       horseId: 9, horseName: 'Sao Mai', status: 'ELIGIBLE', readiness: 'READY', locked: false, newUnexamined: false,

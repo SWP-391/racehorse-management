@@ -40,6 +40,31 @@ describe('trend chart (task 4.3, AC-066)', () => {
   });
 });
 
+describe('trend of every horse with sessions (BR-208, AC-445, AC-446)', () => {
+  const unrated = (id: number) => ({ ...session(id, 3, null), form: null }) as unknown as Session;
+
+  test('AC-445 one rated session still draws its point, says it is the only one and lists the indicators', () => {
+    render(<TrendChart sessions={[session(1, 4, null)]} />);
+    expect(screen.getByRole('table', { name: 'Xu hướng phong độ' })).toBeInTheDocument();
+    expect(screen.getByText('Mới có 1 buổi')).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Chi tiết các buổi tập' })).toBeInTheDocument();
+  });
+
+  test('AC-446 sessions with no form rating say so instead of an empty chart, and keep the indicators', () => {
+    render(<TrendChart sessions={[unrated(1), unrated(2)]} />);
+    expect(screen.getByText('Chưa có điểm phong độ')).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: 'Xu hướng phong độ' })).toBeNull();
+    const details = screen.getByRole('table', { name: 'Chi tiết các buổi tập' });
+    expect(within(details).getAllByRole('row')).toHaveLength(3);
+  });
+
+  test('a mix keeps the gaps: only the rated sessions are points', () => {
+    render(<TrendChart sessions={[unrated(1), session(2, 5, null), session(3, 4, null)]} />);
+    const rows = within(screen.getByRole('table', { name: 'Xu hướng phong độ' })).getAllByRole('row').slice(1);
+    expect(rows.map((r) => within(r).getAllByRole('cell')[0].textContent)).toEqual(['—', '5', '4']);
+  });
+});
+
 describe('trend chart on the progress board (compact)', () => {
   test('the indicator table is behind a disclosure and still lists every recorded indicator', () => {
     const { container } = render(<TrendChart compact sessions={[session(1, 3, 'MANUAL'), session(2, 4, 'SIMULATED')]} />);
@@ -54,8 +79,8 @@ describe('trend chart on the progress board (compact)', () => {
   });
 
   test('with fewer than three sessions a caption says how many there are', () => {
-    render(<TrendChart compact sessions={[session(1, 3, 'MANUAL')]} />);
-    expect(screen.getByText('1 buổi tập')).toBeInTheDocument();
+    render(<TrendChart compact sessions={[session(1, 3, 'MANUAL'), session(2, 4, 'MANUAL')]} />);
+    expect(screen.getByText('2 buổi tập')).toBeInTheDocument();
   });
 });
 

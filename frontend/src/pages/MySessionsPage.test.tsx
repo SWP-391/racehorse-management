@@ -31,6 +31,18 @@ describe('Groom assigned sessions (task 3.3; slice 9 task 2.3)', () => {
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 
+  test('AC-426 every column header is short enough for two lines', async () => {
+    vitest.mocked(api.mySessions).mockResolvedValue(pageOf([
+      { id: 1, horseId: 9, horseName: 'Sao Mai', date: '2026-10-23', startTime: '06:30:00', type: 'TROT', plannedDurationMin: 45, state: 'SCHEDULED', assignmentAck: 'ACKNOWLEDGED', plannedEnd: '07:15:00', plannedEndNextDay: false, endedAt: null },
+    ]));
+    renderAs('GROOM', <MySessionsPage />);
+    await screen.findByText('Sao Mai');
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent ?? '');
+    expect(headers).toContain('Thời lượng (phút)');
+    // A header of up to 20 characters wraps to at most two lines in the narrowest fitted column.
+    for (const h of headers) expect(h.length).toBeLessThanOrEqual(20);
+  });
+
   test('AC-182 nothing assigned shows an empty message', async () => {
     vitest.mocked(api.mySessions).mockResolvedValue(pageOf([]));
     renderAs('GROOM', <MySessionsPage />);

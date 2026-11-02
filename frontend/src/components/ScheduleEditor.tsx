@@ -2,7 +2,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import type { ScheduleRange } from '../api/types';
 import { vi } from '../i18n/vi';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
+import { TimeInput } from './ui/typed-inputs';
 
 interface ScheduleEditorProps {
   value: ScheduleRange[];
@@ -64,21 +64,13 @@ export function ScheduleEditor({ value, onChange, errors = {} }: ScheduleEditorP
                 {mine.map(({ r, index }) => (
                   <div key={index} className="grid gap-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Input
-                        type="time"
-                        aria-label={vi.schedule.startFor(day)}
-                        className="w-32"
-                        value={r.start}
-                        onChange={(e) => patch(index, { start: e.target.value })}
-                      />
+                      <div className="w-36">
+                        <TimeInput aria-label={vi.schedule.startFor(day)} value={r.start} onChange={(v) => patch(index, { start: v })} />
+                      </div>
                       <span aria-hidden>–</span>
-                      <Input
-                        type="time"
-                        aria-label={vi.schedule.endFor(day)}
-                        className="w-32"
-                        value={r.end}
-                        onChange={(e) => patch(index, { end: e.target.value })}
-                      />
+                      <div className="w-36">
+                        <TimeInput aria-label={vi.schedule.endFor(day)} value={r.end} onChange={(v) => patch(index, { end: v })} />
+                      </div>
                       <Button
                         type="button"
                         variant="ghost"

@@ -1,3 +1,4 @@
+import { useState, type ReactNode } from 'react';
 import { Receipt } from 'lucide-react';
 import type { Statement, StatementLine } from '../api/types';
 import { vi } from '../i18n/vi';
@@ -5,6 +6,8 @@ import { formatVnd } from '../lib/utils';
 import { Badge, Section } from './ui/display';
 import { DataTable, type DataColumn } from './ui/data-table';
 import { EmptyState } from './ui/states';
+import { FilterTabs } from './ui/tabs';
+import { StatementDetail } from './StatementDetail';
 
 const columns: DataColumn<StatementLine>[] = [
   { id: 'date', header: vi.billing.date, primary: true, cell: (l) => <span className="tabular">{l.date}</span> },
@@ -27,8 +30,9 @@ const columns: DataColumn<StatementLine>[] = [
  * A statement or a closed invoice grouped by horse then category, with the totals the service computed (BR-180). The
  * client never sums: what it shows is what the service stored.
  */
-export function StatementView({ statement }: { statement: Statement }) {
+export function StatementView({ statement, actions }: { statement: Statement; actions?: ReactNode }) {
   const through = statement.dailyFeeThrough;
+  const [view, setView] = useState<'grouped' | 'detail'>('grouped');
   return (
     <div className="grid gap-6" data-testid="statement">
       <div className="flex flex-wrap items-center gap-3">
@@ -40,15 +44,32 @@ export function StatementView({ statement }: { statement: Statement }) {
             {vi.billing.invoice} {statement.invoiceNumber}
           </span>
         )}
-        <span className="tabular ml-auto font-display text-h2" aria-label={vi.billing.total}>
+        {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+        <span
+          className="tabular ml-auto rounded-md border border-primary/30 bg-primary/10 px-4 py-2 font-display text-xl font-bold text-foreground"
+          aria-label={vi.billing.total}
+        >
           {vi.billing.total}: {formatVnd(statement.total)}
         </span>
       </div>
+      {statement.horses.length > 0 && (
+        <FilterTabs
+          label={vi.billing.viewMode}
+          value={view}
+          onChange={setView}
+          options={[
+            { value: 'grouped', label: vi.billing.viewGrouped },
+            { value: 'detail', label: vi.billing.viewDetail },
+          ]}
+        />
+      )}
       {!statement.closed && (
         <p className="text-meta text-muted-foreground">{vi.billing.feeThrough.replace('{date}', through)}</p>
       )}
       {statement.horses.length === 0 ? (
         <EmptyState icon={Receipt} title={vi.billing.empty} text={vi.billing.emptyHint} />
+      ) : view === 'detail' ? (
+        <StatementDetail statement={statement} />
       ) : (
         statement.horses.map((h) => (
           <Section

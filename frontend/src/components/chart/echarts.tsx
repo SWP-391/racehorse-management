@@ -67,7 +67,8 @@ function buildOption({ kind, categories, series, valueSuffix, integer }: ChartPr
   const categoryAxis = {
     type: 'category' as const,
     data: categories,
-    boundaryGap: kind !== 'area',
+    // One point on an area chart has no line to draw and sits on the axis edge: centre it with a gap (BR-208).
+    boundaryGap: kind !== 'area' || categories.length < 2,
     axisLine: { lineStyle: { color: rule } },
     axisTick: { show: false },
     axisLabel: { ...label, hideOverlap: true, width: horizontal ? 120 : undefined, overflow: 'truncate' as const },

@@ -46,7 +46,7 @@ export default function ProgressPage() {
       primary: true,
       sortValue: (r) => r.horseName,
       cell: (r) => (
-        <span className="flex items-start gap-2">
+        <span className="flex items-center gap-2" data-testid="horse-cell">
           <HorseAvatar id={r.horseId} name={r.horseName} photoVersion={photoOf(r.horseId)} className="size-8 shrink-0 text-sm" />
           <span className="grid gap-0.5">
           <Link to={`/horses/${r.horseId}`} className="font-display text-[1.0625rem] font-medium text-foreground hover:text-primary hover:underline">
@@ -96,11 +96,14 @@ export default function ProgressPage() {
       id: 'recent',
       header: vi.training.recentSessions,
       fit: true,
-      cell: (r) =>
-        r.recentSessions.length === 0 ? (
-          vi.common.none
-        ) : (
-          <DetailPopup title={vi.training.recentSessions} subject={r.horseName} summary={<span className="tabular">{r.recentSessions.length}</span>}>
+      cell: (r) => (
+          <DetailPopup
+            title={vi.training.recentSessions}
+            subject={r.horseName}
+            summary={<span className="tabular">{r.recentSessions.length}</span>}
+            empty={r.recentSessions.length === 0}
+            emptyText={vi.training.noSessions}
+          >
             <ul className="grid gap-2">
               {r.recentSessions.map((s) => (
                 <li key={s.id} className="tabular rounded-md border px-3 py-2 text-sm">
@@ -109,21 +112,18 @@ export default function ProgressPage() {
               ))}
             </ul>
           </DetailPopup>
-        ),
+      ),
     },
     {
       id: 'trend',
       fit: true,
       header: vi.training.trend,
       hideLabelOnMobile: true,
-      cell: (r) =>
-        r.trend.length === 0 ? (
-          vi.common.none
-        ) : (
-          <DetailPopup title={vi.training.trend} subject={r.horseName} wide>
+      cell: (r) => (
+          <DetailPopup title={vi.training.trend} subject={r.horseName} empty={r.trend.length === 0} emptyText={vi.training.noTrend} wide>
             <TrendChart sessions={r.trend} />
           </DetailPopup>
-        ),
+      ),
     },
   ];
 

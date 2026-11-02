@@ -92,7 +92,7 @@ describe('horse form (task 7.4, BR-002, BR-003)', () => {
   test('a birth date in the future is refused on the field and nothing is sent', async () => {
     renderAs('CLUB_MANAGER', <HorseFormPage />, '/horses/new', '/horses/new');
     const birth = await screen.findByLabelText(/^Ngày sinh/);
-    expect(birth).toHaveAttribute('max', today());
+    expect(birth).toHaveAttribute('data-max', today());
     await userEvent.type(birth, today(2));
     await fillAndSubmit();
     expect(birth).toHaveAccessibleDescription(/không được ở tương lai/);

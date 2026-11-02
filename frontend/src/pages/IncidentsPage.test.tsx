@@ -29,9 +29,47 @@ beforeEach(() => {
   vitest.mocked(api.options).mockResolvedValue(pageOf([{ id: 9, label: 'Sao Mai', hint: 'VN-9' }]));
 });
 
+describe('incidents list first, new report in a popup (BR-209, AC-444)', () => {
+  beforeEach(() => vitest.mocked(api.incidents).mockResolvedValue(pageOf([base])));
+
+  test('AC-444 the page opens on the list, "Báo cáo mới" opens the form in a popup that closes when the report is sent', async () => {
+    vitest.mocked(api.sendIncident).mockResolvedValue({ ...base, description: 'Sưng gối' });
+    renderAs('GROOM', <IncidentsPage />);
+    expect(await screen.findByRole('table', { name: 'Các báo cáo' })).toBeInTheDocument();
+    expect(screen.queryByRole('form', { name: 'Gửi báo cáo' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Báo cáo mới' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Báo cáo mới' });
+    await userEvent.click(within(dialog).getByRole('combobox', { name: 'Ngựa' }));
+    await userEvent.click(await screen.findByRole('option', { name: /Sao Mai/ }));
+    await userEvent.type(within(dialog).getByLabelText(/^Mô tả sự cố/), 'Sưng gối');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Gửi báo cáo' }));
+    await vitest.waitFor(() => expect(screen.queryByRole('dialog', { name: 'Báo cáo mới' })).not.toBeInTheDocument());
+    expect(api.sendIncident).toHaveBeenCalled();
+  });
+
+  test('a refused form keeps the popup open and names the field', async () => {
+    vitest.mocked(api.sendIncident).mockRejectedValue(
+      new ApiError(400, 'VALIDATION_FAILED', 'Báo cáo sự cố chưa hợp lệ.', { description: 'Bắt buộc nhập mô tả.' }),
+    );
+    renderAs('GROOM', <IncidentsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Báo cáo mới' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Báo cáo mới' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Gửi báo cáo' }));
+    expect(await within(dialog).findByText('Báo cáo sự cố chưa hợp lệ.')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/^Mô tả sự cố/)).toHaveAccessibleDescription(/Bắt buộc nhập mô tả./);
+  });
+
+  test('a Veterinarian, who sends nothing, has no "Báo cáo mới" button', async () => {
+    renderAs('VETERINARIAN', <IncidentsPage />);
+    await screen.findByRole('table', { name: 'Các báo cáo' });
+    expect(screen.queryByRole('button', { name: 'Báo cáo mới' })).not.toBeInTheDocument();
+  });
+});
+
 describe('incident reports (task 5.3)', () => {
   test('AC-106 the Groom picks from name and registration number only', async () => {
     renderAs('GROOM', <IncidentsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Báo cáo mới' }));
     await userEvent.click(await screen.findByRole('combobox', { name: 'Ngựa' }));
     // The options carry the name and the registration number and nothing else of the horse.
     expect(await screen.findByRole('option', { name: /Sao Mai.*VN-9/ })).toBeInTheDocument();
@@ -42,6 +80,7 @@ describe('incident reports (task 5.3)', () => {
       new ApiError(400, 'VALIDATION_FAILED', 'Báo cáo sự cố chưa hợp lệ.', { description: 'Bắt buộc nhập mô tả.' }),
     );
     renderAs('GROOM', <IncidentsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Báo cáo mới' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Gửi báo cáo' }));
     expect(screen.getByLabelText(/^Mô tả sự cố/)).toHaveAccessibleDescription(/Bắt buộc nhập mô tả./);
   });
@@ -54,6 +93,7 @@ describe('incident reports (task 5.3)', () => {
       }),
     );
     renderAs('GROOM', <IncidentsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Báo cáo mới' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Gửi báo cáo' }));
     const alerts = await screen.findAllByRole('alert');
     expect(alerts.map((a) => a.textContent).join(' ')).toContain('Tối đa 3 ảnh');
@@ -77,6 +117,7 @@ describe('incident reports (task 5.3)', () => {
   test('AC-172 the Groom may choose a catalog region; the Veterinarian sees the same name', async () => {
     vitest.mocked(api.sendIncident).mockResolvedValue({ ...base, description: 'Móng bị xước', bodyRegion: 'LF_HOOF' });
     renderAs('GROOM', <IncidentsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Báo cáo mới' }));
     await userEvent.click(await screen.findByRole('combobox', { name: 'Ngựa' }));
     await userEvent.click(await screen.findByRole('option', { name: /Sao Mai/ }));
     await userEvent.type(screen.getByLabelText(/^Mô tả sự cố/), 'Móng bị xước');

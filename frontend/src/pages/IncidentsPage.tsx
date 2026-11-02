@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { BellRing, CircleAlert, CircleCheck, ClipboardList, Eye, ImageIcon, ShieldOff } from 'lucide-react';
+import { BellRing, Plus, CircleAlert, CircleCheck, ClipboardList, Eye, ImageIcon, ShieldOff } from 'lucide-react';
 import { api } from '../api/api';
 import type { Incident } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
@@ -62,6 +62,8 @@ export default function IncidentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [pending, setPending] = useState<'send' | 'close' | null>(null);
+  // The list is the page; a new report is written in a popup (BR-209, DEC-069).
+  const [composing, setComposing] = useState(false);
 
   if (!allowed) {
     return (
@@ -83,6 +85,7 @@ export default function IncidentsPage() {
       setBodyRegion('');
       setPhotos([]);
       setFileKey((k) => k + 1);
+      setComposing(false);
       notify.success(vi.common.saved);
       await incidents.load.reload();
     } catch (err) {
@@ -184,53 +187,29 @@ export default function IncidentsPage() {
 
   return (
     <>
-      <PageHeader title={vi.incidents.title} />
-      {error && (
+      <PageHeader
+        title={vi.incidents.title}
+        actions={
+          send ? (
+            <Button
+              onClick={() => {
+                setError(null);
+                setFieldErrors({});
+                setComposing(true);
+              }}
+            >
+              <Plus aria-hidden />
+              {vi.incidents.newReport}
+            </Button>
+          ) : undefined
+        }
+      />
+      {error && !composing && (
         <Callout tone="danger" icon={CircleAlert} role="alert" className="mb-6">
           {error}
         </Callout>
       )}
       <div className="grid gap-10">
-        {send && (
-          <Section title={vi.incidents.newReport}>
-            <form onSubmit={submit} className="grid max-w-2xl gap-5" noValidate aria-label={vi.incidents.send}>
-              <div className="grid gap-5 md:grid-cols-2">
-                <FormField label={vi.incidents.horse} error={fieldErrors.horseId}>
-                  <SearchSelect
-                    value={horse}
-                    placeholder={vi.incidents.chooseHorse}
-                    load={(q) => api.options('horses', { q })}
-                    onChange={setHorse}
-                  />
-                </FormField>
-                <RegionSelect regions={regions} value={bodyRegion} onChange={setBodyRegion} error={fieldErrors.bodyRegion} />
-              </div>
-              <FormField label={vi.incidents.description} error={fieldErrors.description}>
-                <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
-              </FormField>
-              <FormField label={vi.incidents.photos}>
-                <FileInput
-                  key={fileKey}
-                  buttonLabel={vi.incidents.choosePhoto}
-                  accept="image/jpeg,image/png"
-                  multiple
-                  onChange={(e) => setPhotos(Array.from(e.target.files ?? []))}
-                />
-              </FormField>
-              {photoErrors.map(([k, m]) => (
-                <Callout key={k} tone="danger" icon={CircleAlert} role="alert">
-                  {m}
-                </Callout>
-              ))}
-              <div className="flex flex-col sm:flex-row sm:justify-end">
-                <Button type="submit" loading={pending === 'send'}>
-                  {vi.incidents.send}
-                </Button>
-              </div>
-            </form>
-          </Section>
-        )}
-
         <Section title={vi.incidents.list}>
           <div className="mb-4">
             <ListToolbar
@@ -296,6 +275,54 @@ export default function IncidentsPage() {
           </Dialog>
         </Section>
       </div>
+      <Dialog open={send && composing} onOpenChange={(isOpen) => !isOpen && setComposing(false)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{vi.incidents.newReport}</DialogTitle>
+            <DialogDescription className="sr-only">{vi.incidents.newReport}</DialogDescription>
+          </DialogHeader>
+          {error && (
+            <Callout tone="danger" icon={CircleAlert} role="alert">
+              {error}
+            </Callout>
+          )}
+            <form onSubmit={submit} className="grid gap-5" noValidate aria-label={vi.incidents.send}>
+              <div className="grid gap-5 md:grid-cols-2">
+                <FormField label={vi.incidents.horse} error={fieldErrors.horseId}>
+                  <SearchSelect
+                    value={horse}
+                    placeholder={vi.incidents.chooseHorse}
+                    load={(q) => api.options('horses', { q })}
+                    onChange={setHorse}
+                  />
+                </FormField>
+                <RegionSelect regions={regions} value={bodyRegion} onChange={setBodyRegion} error={fieldErrors.bodyRegion} />
+              </div>
+              <FormField label={vi.incidents.description} error={fieldErrors.description}>
+                <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
+              </FormField>
+              <FormField label={vi.incidents.photos}>
+                <FileInput
+                  key={fileKey}
+                  buttonLabel={vi.incidents.choosePhoto}
+                  accept="image/jpeg,image/png"
+                  multiple
+                  onChange={(e) => setPhotos(Array.from(e.target.files ?? []))}
+                />
+              </FormField>
+              {photoErrors.map(([k, m]) => (
+                <Callout key={k} tone="danger" icon={CircleAlert} role="alert">
+                  {m}
+                </Callout>
+              ))}
+              <div className="flex flex-col sm:flex-row sm:justify-end">
+                <Button type="submit" loading={pending === 'send'}>
+                  {vi.incidents.send}
+                </Button>
+              </div>
+            </form>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

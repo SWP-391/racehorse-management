@@ -7,7 +7,7 @@ import { api } from '../api/api';
 import type { Horse } from '../api/types';
 import { pageOf } from '../test/page';
 
-vitest.mock('../api/api', () => ({ api: { horses: vitest.fn(), readinessList: vitest.fn(), areas: vitest.fn().mockResolvedValue([{ id: 1, name: 'A', capacity: 4, occupied: 1 }]) } }));
+vitest.mock('../api/api', () => ({ api: { horses: vitest.fn(), readinessList: vitest.fn(), options: vitest.fn().mockResolvedValue({ items: [{ id: 1, label: 'HLV Nam', hint: null }], page: 0, size: 100, total: 1 }), areas: vitest.fn().mockResolvedValue([{ id: 1, name: 'A', capacity: 4, occupied: 1 }]) } }));
 
 function horse(id: number, name: string): Horse {
   return {
@@ -101,5 +101,57 @@ describe('paged horse list (BR-185, AC-365 to AC-367, AC-370)', () => {
     expect(screen.getByText('3 kết quả')).toBeInTheDocument();
     // The Owner has no health filter (PERM-020): the service would refuse it.
     expect(screen.queryByRole('combobox', { name: 'Trạng thái sức khỏe' })).not.toBeInTheDocument();
+  });
+});
+
+describe('horse list for the Head Trainer and the Club Manager (BR-209, AC-438 to AC-440)', () => {
+  const withHealth = (h: Horse): Horse => ({ ...h, healthStatus: 'INJURED' });
+
+  test('AC-438 no sex or birth date, a health status, and "Sẵn sàng tập luyện" instead of a competition word', async () => {
+    vitest.mocked(api.horses).mockResolvedValue(pageOf([withHealth(horse(1, 'A'))]));
+    vitest.mocked(api.readinessList).mockResolvedValue([{ horseId: 1, readiness: 'NOT_READY' }]);
+    renderAs('HEAD_TRAINER', <HorsesPage />);
+    await screen.findByRole('link', { name: 'A' });
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(headers).not.toContain('Giới tính');
+    expect(headers).not.toContain('Ngày sinh');
+    expect(headers).toContain('Trạng thái sức khỏe');
+    expect(headers).toContain('Sẵn sàng tập luyện');
+    expect(within(screen.getByRole('link', { name: 'A' }).closest('tr')!).getByText('Chấn thương')).toBeInTheDocument();
+    expect(screen.queryByText(/thi đấu/)).not.toBeInTheDocument();
+  });
+
+  test('AC-439 filters by readiness and by assigned trainer, sent to the service together', async () => {
+    vitest.mocked(api.horses).mockResolvedValue(pageOf([withHealth(horse(1, 'A'))]));
+    vitest.mocked(api.readinessList).mockResolvedValue([]);
+    renderAs('CLUB_MANAGER', <HorsesPage />);
+    await screen.findByRole('link', { name: 'A' });
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Sẵn sàng tập luyện' }), 'READY');
+    await screen.findByRole('option', { name: 'HLV Nam' });
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'HLV phụ trách' }), '1');
+    await vitest.waitFor(() =>
+      expect(api.horses).toHaveBeenLastCalledWith(expect.objectContaining({ readiness: 'READY', trainerId: '1' })),
+    );
+  });
+
+  test('AC-439 a Head Trainer, who may not list trainers, filters to the horses they are assigned to', async () => {
+    vitest.mocked(api.horses).mockResolvedValue(pageOf([withHealth(horse(1, 'A'))]));
+    vitest.mocked(api.readinessList).mockResolvedValue([]);
+    vitest.mocked(api.options).mockClear();
+    renderAs('HEAD_TRAINER', <HorsesPage />);
+    await screen.findByRole('link', { name: 'A' });
+    expect(api.options).not.toHaveBeenCalledWith('trainers', expect.anything());
+    await userEvent.click(screen.getByRole('checkbox', { name: /Chỉ ngựa/ }));
+    await vitest.waitFor(() => expect(api.horses).toHaveBeenLastCalledWith(expect.objectContaining({ trainerId: expect.any(String) })));
+  });
+
+  test('AC-440 the owner keeps sex and birth date and a search hint that does not mention the owner', async () => {
+    vitest.mocked(api.horses).mockResolvedValue(pageOf([horse(1, 'A')]));
+    vitest.mocked(api.readinessList).mockResolvedValue([]);
+    renderAs('HORSE_OWNER', <HorsesPage />);
+    await screen.findByRole('link', { name: 'A' });
+    expect(screen.getByRole('searchbox')).toHaveAttribute('placeholder', 'Tìm theo tên hoặc số đăng ký');
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toContain('Giới tính');
+    expect(screen.queryByRole('combobox', { name: 'Sẵn sàng tập luyện' })).not.toBeInTheDocument();
   });
 });

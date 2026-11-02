@@ -204,7 +204,7 @@ describe('who trains the horse (BR-152 to BR-156, AC-283 to AC-290)', () => {
     await userEvent.click(within(dialog).getByRole('combobox'));
     await userEvent.click(await screen.findByRole('option', { name: /Trần Quốc Hoàng/ }));
     const until = within(dialog).getByLabelText(/^Trả ngựa vào ngày/);
-    expect(until).toHaveAttribute('min', today(1));
+    expect(until).toHaveAttribute('data-min', today(1));
     await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu' }));
     expect(until).toHaveAccessibleDescription('Bắt buộc nhập.');
     await userEvent.type(until, today());

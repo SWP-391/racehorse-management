@@ -1,8 +1,8 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { CircleAlert, CircleCheck, CircleDashed, CircleX, ClipboardCheck, ShieldOff } from 'lucide-react';
 import { api } from '../api/api';
 import { ApiError } from '../api/client';
-import { CHORES, type Page, type ChoreCode, type ChoreHistoryEntry, type ChoreHorse, type ChoreRangeHorse, type ChoreState } from '../api/types';
+import { CHORES, type Page, type ChoreCode, type ChoreHistoryEntry, type ChoreHorse, type ChoreDaySummary, type ChoreRangeHorse, type ChoreState } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { fieldsOf, messageOf } from '../components/ErrorText';
 import { PagerBar } from '../components/PagerBar';
@@ -20,10 +20,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Badge, PageHeader } from '../components/ui/display';
 import { FormField } from '../components/ui/form-field';
 import { Input } from '../components/ui/input';
+import { DateInput } from '../components/ui/typed-inputs';
 import { ListFooter, ListToolbar } from '../components/ui/list-toolbar';
 import { SearchSelect, type Chosen } from '../components/ui/search-select';
 import { FilterTabs } from '../components/ui/tabs';
 import { Callout, EmptyState } from '../components/ui/states';
+import { DetailPopup } from '../components/ui/detail-popup';
 import { clubDateTime, clubTime } from '../lib/utils';
 import { useSearchParams } from 'react-router-dom';
 
@@ -116,15 +118,41 @@ function daysBefore(iso: string, days: number): string {
 const MAX_RANGE_DAYS = 31;
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
 
-/** "2026-10-24" -> "24/10". */
-const dayMonth = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+/** "2026-10-24" -> "24/10/2026". */
+const dayText = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+
+/** The horses of one day with their four chores, opened from a row of the history (read-only). */
+function DayDetail({ date, owner, horseId }: { date: string; owner: boolean; horseId: number | '' }) {
+  const load = useLoad<Page<ChoreRangeHorse>>(() => api.choreRange({ from: date, to: date, horseId: horseId === '' ? undefined : horseId, size: 100 }), [date, horseId]);
+  return (
+    <DataView load={load} isEmpty={(d) => d.items.length === 0} empty={<EmptyState icon={ClipboardCheck} title={vi.chores.empty} />}>
+      {(data) => (
+        <ul aria-label={vi.chores.dayOf(dayText(date))} className="m-0 grid max-h-[60vh] list-none gap-2 overflow-y-auto p-0">
+          {data.items.map((h) => (
+            <li key={h.horseId} className="grid gap-1.5 rounded-md border px-3 py-2">
+              <span className="font-display text-base font-medium">{h.horseName}</span>
+              <span className="flex flex-wrap gap-1.5">
+                {(h.days[0]?.chores ?? []).map((c) => (
+                  <Badge key={c.chore} tone={c.done ? 'eligible' : 'neutral'}>
+                    {vi.chores.names[c.chore]}:{' '}
+                    {c.done ? (owner || !c.groomName ? vi.chores.done : vi.chores.doneBy(c.groomName, clubTime(c.markedAt))) : vi.chores.notDone}
+                  </Badge>
+                ))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </DataView>
+  );
+}
 
 /**
- * The chore history of a date range (BR-188): horses by day with how many of the four chores were done, who and when
- * in the day's tooltip. Read-only: marking stays on today's list. The range defaults to the last 7 days.
+ * The chore history of a date range (BR-188, BR-209): one row per day, newest first and paged, with how many chores
+ * were done; a row opens the horses of that day in a popup. Read-only: marking stays on today's list. The range
+ * defaults to the last 7 days. `lead` is the tab switch, kept on the same row as the filters while there is room.
  */
-function HistoryTab({ today, owner }: { today: string; owner: boolean }) {
-  const photoOf = useHorsePhotos();
+function HistoryTab({ today, owner, lead }: { today: string; owner: boolean; lead: ReactNode }) {
   const [horse, setHorse] = useState<Chosen | null>(null);
   const defaults = { from: daysBefore(today, 6), to: today };
   // The range is checked here, so a range the service would refuse is never sent and its message shows once.
@@ -134,60 +162,49 @@ function HistoryTab({ today, owner }: { today: string; owner: boolean }) {
   const invalid = rangeTo < rangeFrom;
   const tooLong = !invalid && daysBetween(rangeFrom, rangeTo) + 1 > MAX_RANGE_DAYS;
   // The range shown is always the one sent, so the service never applies a default the screen does not show.
-  const list: PagedList<Page<ChoreRangeHorse>> = usePagedList<Page<ChoreRangeHorse>>(
-    (query) => api.choreRange({ ...query, from: list.filters.from || defaults.from, to: list.filters.to || defaults.to }),
+  const list: PagedList<Page<ChoreDaySummary>> = usePagedList<Page<ChoreDaySummary>>(
+    (query) => api.choreDays({ ...query, from: list.filters.from || defaults.from, to: list.filters.to || defaults.to }),
     { filters: ['from', 'to'], prefix: 'h', fixed: { horseId: horse ? horse.id : '' }, enabled: !invalid && !tooLong },
   );
   const from = list.filters.from || defaults.from;
   const to = list.filters.to || defaults.to;
-  const columns: DataColumn<ChoreRangeHorse>[] = [
+  const horseId: number | '' = horse ? horse.id : '';
+  const columns: DataColumn<ChoreDaySummary>[] = [
+    { id: 'date', header: vi.chores.date, primary: true, cell: (d) => <span className="tabular font-medium">{dayText(d.date)}</span> },
+    { id: 'horses', header: vi.chores.horses, cell: (d) => <span className="tabular">{d.horses}</span> },
     {
-      id: 'horse',
-      header: vi.chores.horse,
-      primary: true,
-      cell: (h) => (
-        <span className="flex items-start gap-2">
-          <HorseAvatar id={h.horseId} name={h.horseName} photoVersion={photoOf(h.horseId)} className="size-8 shrink-0 text-sm" />
-          <span className="grid gap-0.5">
-            <span className="font-display text-[1.0625rem] font-medium text-foreground">{h.horseName}</span>
-            <span className="tabular text-meta text-muted-foreground">{h.registrationNumber}</span>
+      id: 'done',
+      header: vi.chores.doneCount,
+      cell: (d) => (
+        <Badge tone={d.done === d.chores ? 'eligible' : d.done === 0 ? 'neutral' : 'watch'}>
+          <span className="tabular">
+            {d.done}/{d.chores}
           </span>
-        </span>
+        </Badge>
       ),
     },
+    { id: 'missed', header: vi.chores.missedCount, cell: (d) => <span className="tabular">{d.chores - d.done}</span> },
     {
-      id: 'days',
-      header: vi.chores.days,
+      id: 'view',
+      fit: true,
+      header: vi.chores.dayDetail,
       hideLabelOnMobile: true,
-      cell: (h) => (
-        <ul aria-label={vi.chores.daysOf(h.horseName)} className="m-0 flex list-none flex-wrap gap-1.5 p-0">
-          {h.days.map((d) => {
-            const done = d.chores.filter((c) => c.done);
-            const detail = d.chores
-              .map((c) => `${vi.chores.names[c.chore]}: ${c.done ? (owner || !c.groomName ? vi.chores.done : vi.chores.doneBy(c.groomName, clubTime(c.markedAt))) : vi.chores.notDone}`)
-              .join('\n');
-            return (
-              <li key={d.date} title={detail}>
-                <Badge tone={done.length === d.chores.length ? 'eligible' : done.length === 0 ? 'neutral' : 'watch'}>
-                  <span className="tabular">
-                    {dayMonth(d.date)}: {done.length}/{d.chores.length}
-                  </span>
-                </Badge>
-              </li>
-            );
-          })}
-        </ul>
+      cell: (d) => (
+        <DetailPopup title={vi.chores.dayOf(dayText(d.date))} wide>
+          <DayDetail date={d.date} owner={owner} horseId={horseId} />
+        </DetailPopup>
       ),
     },
   ];
   return (
     <div className="grid gap-4">
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+        {lead}
         <FormField label={vi.chores.from}>
-          <Input type="date" value={from} max={to} onChange={(e) => list.setFilter('from', e.target.value)} className="sm:w-44" />
+          <DateInput max={to || today} value={from} onChange={(v) => list.setFilter('from', v)} className="sm:w-44" />
         </FormField>
         <FormField label={vi.chores.to} error={invalid ? vi.chores.rangeInvalid : tooLong ? vi.chores.rangeTooLong : null}>
-          <Input type="date" value={to} min={from} max={today} onChange={(e) => list.setFilter('to', e.target.value)} className="sm:w-44" />
+          <DateInput min={from || undefined} max={today} value={to} onChange={(v) => list.setFilter('to', v)} className="sm:w-44" />
         </FormField>
         {!owner && (
           <FormField label={vi.chores.horse} className="min-w-[14rem]">
@@ -201,7 +218,6 @@ function HistoryTab({ today, owner }: { today: string; owner: boolean }) {
           </FormField>
         )}
       </div>
-      <ListToolbar query={list.query} onQuery={list.setQuery} placeholder={vi.chores.searchPlaceholder} total={list.load.state.data?.total} />
       <DataView
         load={list.load}
         isEmpty={(data) => data.items.length === 0}
@@ -209,7 +225,7 @@ function HistoryTab({ today, owner }: { today: string; owner: boolean }) {
       >
         {(data) => (
           <div className="grid gap-3">
-            <DataTable caption={vi.chores.history} data={data.items} columns={columns} rowKey={(h) => h.horseId} />
+            <DataTable caption={vi.chores.history} data={data.items} columns={columns} rowKey={(d) => d.date} />
             <ListFooter data={data} onPage={list.setPage} onSize={list.setSize} />
           </div>
         )}
@@ -430,11 +446,28 @@ export default function ChoresPage() {
             )}
             {code === 'FEEDING' && mealsShown && (
               <span className="basis-full text-meta text-muted-foreground" aria-label={vi.ration.todayMeals}>
-                {mealsByHorse.has(h.horseId)
-                  ? (mealsByHorse.get(h.horseId) ?? [])
-                      .map((m) => `${m.time} ${m.name}: ${m.items.map((i) => `${i.supplyItemName} ${i.quantity} ${i.unit}`).join(', ')}`)
-                      .join(' · ')
-                  : vi.ration.none}
+                {mealsByHorse.has(h.horseId) ? (
+                  <DetailPopup
+                    title={vi.ration.todayMeals}
+                    subject={h.horseName}
+                    summary={<span className="tabular">{vi.ration.mealsCount((mealsByHorse.get(h.horseId) ?? []).length)}</span>}
+                  >
+                    <ul className="m-0 grid list-none gap-2 p-0">
+                      {(mealsByHorse.get(h.horseId) ?? []).map((m) => (
+                        <li key={`${m.time}-${m.name}`} className="rounded-md border px-3 py-2 text-sm">
+                          <span className="tabular font-medium">
+                            {m.time} {m.name}
+                          </span>
+                          <span className="block text-muted-foreground">
+                            {m.items.map((i) => `${i.supplyItemName} ${i.quantity} ${i.unit}`).join(', ')}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </DetailPopup>
+                ) : (
+                  vi.ration.none
+                )}
               </span>
             )}
           </span>
@@ -442,6 +475,20 @@ export default function ChoresPage() {
       },
     })),
   ];
+
+  // The two views and the filters of the view share one row while there is room, and wrap when the screen is narrow.
+  const tabs = (
+    <FilterTabs
+      label={vi.chores.view}
+      value={tab}
+      onChange={setTab}
+      className="mx-0 border-b-0 px-0"
+      options={[
+        { value: 'today', label: vi.chores.tabToday },
+        { value: 'history', label: vi.chores.tabHistory },
+      ]}
+    />
+  );
 
   const back = day !== null && day.date !== day.today ? (
     <Button variant="outline" onClick={() => setDate('')}>
@@ -455,25 +502,17 @@ export default function ChoresPage() {
         title={vi.chores.title}
         description={owner ? vi.chores.ownerDescription : mayMark ? vi.chores.description : vi.chores.readOnlyDescription}
       />
-      <FilterTabs
-        label={vi.chores.view}
-        value={tab}
-        onChange={setTab}
-        className="mb-6"
-        options={[
-          { value: 'today', label: vi.chores.tabToday },
-          { value: 'history', label: vi.chores.tabHistory },
-        ]}
-      />
       {tab === 'history' ? (
-        <HistoryTab today={day?.today ?? new Date().toISOString().slice(0, 10)} owner={owner} />
+        <HistoryTab today={day?.today ?? new Date().toISOString().slice(0, 10)} owner={owner} lead={tabs} />
       ) : (
       <>
-      {!owner && (
-        // The Owner sees today only on the day list (PERM-036): no date input. One filter row at every width.
-        <div className="mb-6 flex flex-wrap items-end gap-3">
+      {(
+        // The Owner sees today only on the day list (PERM-036): no date input, only the tab switch.
+        <div className="mb-6 flex flex-wrap items-end gap-x-4 gap-y-3">
+          {tabs}
+          {!owner && (<>
           <FormField label={vi.chores.date}>
-            <Input type="date" value={day?.date ?? date} onChange={(e) => setDate(e.target.value)} className="sm:w-44" />
+            <DateInput max={day?.today} value={day?.date ?? date} onChange={setDate} className="sm:w-44" />
           </FormField>
           {back}
           {can('MANAGE_CHORE_MARKS') && (
@@ -481,6 +520,7 @@ export default function ChoresPage() {
               {vi.chores.fillPast}
             </Button>
           )}
+          </>)}
         </div>
       )}
       {markError && (
@@ -550,11 +590,10 @@ export default function ChoresPage() {
                 </Select>
               </FormField>
               <FormField label={vi.chores.date} error={fillErrors.date}>
-                <Input
-                  type="date"
+                <DateInput
                   max={day ? daysBefore(day.today, 1) : undefined}
                   value={fill.date}
-                  onChange={(e) => setFill({ ...fill, date: e.target.value })}
+                  onChange={(v) => setFill({ ...fill, date: v })}
                 />
               </FormField>
             </div>

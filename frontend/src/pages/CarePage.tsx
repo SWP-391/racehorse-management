@@ -9,6 +9,8 @@ import { HorseAvatar } from '../components/HorseAvatar';
 import { useHorsePhotos } from '../hooks/useHorsePhotos';
 import { vi } from '../i18n/vi';
 import { usePagedList } from '../hooks/usePagedList';
+import { useTabParam } from '../hooks/useTabParam';
+import { useLoad } from '../hooks/useLoad';
 import { notify } from '../lib/notify';
 import { Button } from '../components/ui/button';
 import { DataTable, type DataColumn } from '../components/ui/data-table';
@@ -17,12 +19,17 @@ import { Badge, PageHeader } from '../components/ui/display';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { FormField } from '../components/ui/form-field';
 import { Input } from '../components/ui/input';
+import { DateInput, NumberInput } from '../components/ui/typed-inputs';
+import { LIMITS } from '../lib/limits';
+import { BOUNDS, blank, collect, date, focusFirstInvalid, maxLength, number, required, today, type Check } from '../lib/validate';
 import { ListFooter, ListToolbar } from '../components/ui/list-toolbar';
 import { Select } from '../components/ui/select';
 import { SearchSelect, type Chosen } from '../components/ui/search-select';
 import { NoMatches, PanelSearch } from '../components/PanelSearch';
 import { StaggerList } from '../components/ui/stagger-list';
 import { Callout, EmptyState } from '../components/ui/states';
+import { FilterTabs } from '../components/ui/tabs';
+import { StatCard } from '../components/ui/stat-card';
 
 type DoneForm = {
   id: number;
@@ -108,12 +115,22 @@ export default function CarePage() {
   const [pending, setPending] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
-  const due = usePagedList((query) => api.careDue(query), { filters: ['type', 'state'], prefix: 'd', enabled: allowed });
+  // Two tabs: what is due across the herd, and the care items of one chosen horse (BR-209, DEC-069).
+  const [tab, setTab] = useTabParam(['overview', 'horse'] as const);
+  const due = usePagedList((query) => api.careDue(query), { filters: ['type', 'state'], prefix: 'd', enabled: allowed && tab === 'overview' });
+  const counts = useLoad(
+    async () => ({
+      overdue: (await api.careDue({ state: 'OVERDUE', size: 1 })).total,
+      soon: (await api.careDue({ state: 'DUE_SOON', size: 1 })).total,
+    }),
+    [],
+    allowed && tab === 'overview',
+  );
   const items = usePagedList((query) => api.careOf(horseId as number, query), {
     filters: ['type', 'state'],
     prefix: 'c',
     fixed: { horse: horseId },
-    enabled: allowed && horseId !== '',
+    enabled: allowed && tab === 'horse' && horseId !== '',
   });
 
   const completing = done.id !== 0 && done.type !== '' && done.type !== 'HOOF_CHECK';
@@ -142,6 +159,19 @@ export default function CarePage() {
     } finally {
       setPending(null);
     }
+  }
+
+  /** Runs the checks of a form first; a refused field is named and focused and nothing is sent (input-validation). */
+  function guard(e: FormEvent, checks: Record<string, Check>, run: () => void) {
+    e.preventDefault();
+    const refused = collect(checks);
+    setError(null);
+    setFieldErrors(refused);
+    if (Object.keys(refused).length > 0) {
+      focusFirstInvalid(e.currentTarget as HTMLFormElement);
+      return;
+    }
+    run();
   }
 
   const rowMark = (i: CareItem) => (i.state === 'OVERDUE' ? 'bg-status-injured/40' : undefined);
@@ -255,11 +285,23 @@ export default function CarePage() {
       <PageHeader
         title={vi.vet.care}
         actions={
-          <Button onClick={() => setAddOpen(true)} disabled={horseId === ''} title={horseId === '' ? vi.vet.chooseHorseFirst : undefined}>
-            <Plus aria-hidden />
-            {vi.vet.addCare}
-          </Button>
+          tab === 'horse' ? (
+            <Button onClick={() => setAddOpen(true)} disabled={horseId === ''} title={horseId === '' ? vi.vet.chooseHorseFirst : undefined}>
+              <Plus aria-hidden />
+              {vi.vet.addCare}
+            </Button>
+          ) : undefined
         }
+      />
+      <FilterTabs
+        label={vi.vet.tabs.label}
+        value={tab}
+        onChange={setTab}
+        className="mb-6"
+        options={[
+          { value: 'overview', label: vi.vet.tabs.overview },
+          { value: 'horse', label: vi.vet.tabs.horse },
+        ]}
       />
       {error && Object.keys(fieldErrors).length > 0 ? null : !done.id && !change.id && !addOpen && error ? (
         <Callout tone="danger" icon={CircleAlert} role="alert" className="mb-6">
@@ -267,6 +309,7 @@ export default function CarePage() {
         </Callout>
       ) : null}
 
+      {tab === 'horse' && (
       <div className="mb-6 grid gap-2 rounded-lg border bg-card p-4 md:p-5">
         <FormField label={vi.incidents.horse} description={vi.vet.horseCare} className="md:max-w-md">
           <SearchSelect
@@ -284,9 +327,16 @@ export default function CarePage() {
           />
         </FormField>
       </div>
+      )}
 
-      {horseId === '' ? (
+      {tab === 'horse' && horseId === '' ? (
+        <EmptyState icon={CalendarCheck} title={vi.vet.chooseHorseFirst} text={vi.vet.chooseHorseHint} />
+      ) : tab === 'overview' ? (
         <section aria-labelledby="care-due-title" className="grid gap-4">
+          <div className="grid max-w-md grid-cols-2 gap-2 sm:gap-3">
+            <StatCard label={vi.vet.dueStates.OVERDUE} value={counts.state.data?.overdue ?? 0} icon={TriangleAlert} tone="injured" />
+            <StatCard label={vi.vet.dueStates.DUE_SOON} value={counts.state.data?.soon ?? 0} icon={Clock} tone="watch" />
+          </div>
           <h2 id="care-due-title" className="text-h2">
             {vi.vet.dueList}
           </h2>
@@ -361,18 +411,36 @@ export default function CarePage() {
                   className="grid gap-5"
                   aria-label={vi.vet.complete}
                   noValidate
-                  onSubmit={(e: FormEvent) => {
-                    e.preventDefault();
-                    void act('done', async () => {
-                      const { id, type: _type, quantity, supplyItemId, product, ...rest } = done;
-                      void _type;
-                      await api.completeCare(id, completing
-                        ? { ...rest, supplyItemId, quantity: quantity.trim() === '' ? '' : Number(quantity) }
-                        : { ...rest, product });
-                      notify.success(vi.common.saved);
-                      setDone(NO_DONE);
-                    });
-                  }}
+                  onSubmit={(e: FormEvent) =>
+                    guard(
+                      e,
+                      {
+                        dateDone: required(done.dateDone) ?? date(done.dateDone, { notFuture: true }),
+                        performer: blank(done.performer) ? 'Bắt buộc nhập người thực hiện.' : maxLength(done.performer, LIMITS.performer),
+                        product: completing ? null : maxLength(done.product, LIMITS.product),
+                        batch: maxLength(done.batch, LIMITS.batch),
+                        note: maxLength(done.note, LIMITS.longText),
+                        ...(completing
+                          ? {
+                              supplyItemId: done.supplyItemId === '' ? 'Chọn thuốc từ kho.' : null,
+                              quantity: blank(done.quantity)
+                                ? 'Bắt buộc nhập số lượng đã dùng.'
+                                : number(done.quantity, { positive: true, integer: true, max: chosenMedicine?.quantity ?? BOUNDS.quantity.max }),
+                            }
+                          : {}),
+                      },
+                      () =>
+                        void act('done', async () => {
+                          const { id, type: _type, quantity, supplyItemId, product, ...rest } = done;
+                          void _type;
+                          await api.completeCare(id, completing
+                            ? { ...rest, supplyItemId, quantity: quantity.trim() === '' ? '' : Number(quantity) }
+                            : { ...rest, product });
+                          notify.success(vi.common.saved);
+                          setDone(NO_DONE);
+                        }),
+                    )
+                  }
                 >
                   <div className="grid gap-5 md:grid-cols-2">
                     {doneFields.map(([k, label, type]) =>
@@ -380,7 +448,7 @@ export default function CarePage() {
                         <div key={k} className="grid gap-2 md:col-span-2">
                           {outsider ? (
                             <FormField label={`${label} (${vi.vet.performerOutside})`} error={fieldErrors[k]}>
-                              <Input type="text" value={done.performer} onChange={(e) => setDone({ ...done, performer: e.target.value })} />
+                              <Input maxLength={LIMITS.performer} value={done.performer} onChange={(e) => setDone({ ...done, performer: e.target.value })} />
                             </FormField>
                           ) : (
                             <FormField label={label} error={fieldErrors[k]}>
@@ -407,7 +475,15 @@ export default function CarePage() {
                         </div>
                       ) : (
                         <FormField key={k} label={label} error={fieldErrors[k]} className={k === 'dateDone' ? undefined : 'md:col-span-2'}>
-                          <Input type={type} value={done[k]} onChange={(e) => setDone({ ...done, [k]: e.target.value })} />
+                          {type === 'date' ? (
+                            <DateInput max={today()} value={done[k]} onChange={(v) => setDone({ ...done, [k]: v })} />
+                          ) : (
+                            <Input
+                              maxLength={k === 'product' ? LIMITS.product : k === 'batch' ? LIMITS.batch : LIMITS.longText}
+                              value={done[k]}
+                              onChange={(e) => setDone({ ...done, [k]: e.target.value })}
+                            />
+                          )}
                         </FormField>
                       ),
                     )}
@@ -433,13 +509,14 @@ export default function CarePage() {
                           error={fieldErrors.quantity}
                           className="md:max-w-xs"
                         >
-                          <Input
-                            type="number"
-                            inputMode="numeric"
+                          <NumberInput
+                            integer
                             min={1}
-                            max={chosenMedicine?.quantity}
+                            max={chosenMedicine?.quantity ?? BOUNDS.quantity.max}
+                            unit={chosenMedicine?.unit ?? 'đơn vị'}
+                            unitInLabel
                             value={done.quantity}
-                            onChange={(e) => setDone({ ...done, quantity: e.target.value })}
+                            onChange={(v) => setDone({ ...done, quantity: v })}
                           />
                         </FormField>
                       </>
@@ -468,19 +545,26 @@ export default function CarePage() {
                   className="grid gap-5"
                   aria-label={change.kind === 'override' ? vi.vet.override : vi.vet.postpone}
                   noValidate
-                  onSubmit={(e: FormEvent) => {
-                    e.preventDefault();
-                    void act('change', async () => {
-                      await (change.kind === 'override' ? api.overrideCare : api.postponeCare)(change.id, change.newDue, change.reason);
-                      setChange({ ...change, id: 0 });
-                    });
-                  }}
+                  onSubmit={(e: FormEvent) =>
+                    guard(
+                      e,
+                      {
+                        newDue: blank(change.newDue) ? 'Bắt buộc nhập ngày đến hạn mới.' : date(change.newDue),
+                        reason: blank(change.reason) ? 'Bắt buộc nhập lý do.' : maxLength(change.reason, LIMITS.longText),
+                      },
+                      () =>
+                        void act('change', async () => {
+                          await (change.kind === 'override' ? api.overrideCare : api.postponeCare)(change.id, change.newDue, change.reason);
+                          setChange({ ...change, id: 0 });
+                        }),
+                    )
+                  }
                 >
                   <FormField label={vi.vet.newDue} error={fieldErrors.newDue} className="md:max-w-xs">
-                    <Input type="date" value={change.newDue} onChange={(e) => setChange({ ...change, newDue: e.target.value })} />
+                    <DateInput value={change.newDue} onChange={(v) => setChange({ ...change, newDue: v })} />
                   </FormField>
                   <FormField label={vi.vet.reason} error={fieldErrors.reason}>
-                    <Input value={change.reason} onChange={(e) => setChange({ ...change, reason: e.target.value })} />
+                    <Input maxLength={LIMITS.longText} value={change.reason} onChange={(e) => setChange({ ...change, reason: e.target.value })} />
                   </FormField>
                   <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                     <Button variant="outline" onClick={() => setChange({ ...change, id: 0 })}>
@@ -553,19 +637,29 @@ export default function CarePage() {
               className="grid gap-5"
               aria-label={vi.vet.addCare}
               noValidate
-              onSubmit={(e: FormEvent) => {
-                e.preventDefault();
-                void act('add', async () => {
-                  const plan = planned.medicine && planned.quantity.trim() !== ''
-                    ? { plannedSupplyItemId: planned.medicine.id, plannedQuantity: Number(planned.quantity) }
-                    : {};
-                  await api.createCare(horseId as number, { ...form, ...plan });
-                  notify.success(vi.common.saved);
-                  setForm({ type: '', name: '', intervalDays: '', firstDue: '' });
-                  setPlanned({ medicine: null, quantity: '' });
-                  setAddOpen(false);
-                });
-              }}
+              onSubmit={(e: FormEvent) =>
+                guard(
+                  e,
+                  {
+                    type: blank(form.type) ? 'Bắt buộc chọn.' : null,
+                    name: required(form.name) ?? maxLength(form.name, LIMITS.careName),
+                    intervalDays: number(form.intervalDays, { ...BOUNDS.intervalDays, integer: true, required: true }),
+                    firstDue: blank(form.firstDue) ? 'Bắt buộc nhập ngày đến hạn đầu tiên.' : date(form.firstDue),
+                    plannedQuantity: number(planned.quantity, { ...BOUNDS.quantity, integer: true }),
+                  },
+                  () =>
+                    void act('add', async () => {
+                      const plan = planned.medicine && planned.quantity.trim() !== ''
+                        ? { plannedSupplyItemId: planned.medicine.id, plannedQuantity: Number(planned.quantity) }
+                        : {};
+                      await api.createCare(horseId as number, { ...form, ...plan });
+                      notify.success(vi.common.saved);
+                      setForm({ type: '', name: '', intervalDays: '', firstDue: '' });
+                      setPlanned({ medicine: null, quantity: '' });
+                      setAddOpen(false);
+                    }),
+                )
+              }
             >
               <div className="grid gap-5 md:grid-cols-2">
                 <FormField label={vi.vet.type} error={fieldErrors.type}>
@@ -579,18 +673,20 @@ export default function CarePage() {
                   </Select>
                 </FormField>
                 <FormField label={vi.vet.name} error={fieldErrors.name}>
-                  <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                  <Input maxLength={LIMITS.careName} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
                 </FormField>
                 <FormField label={vi.vet.interval} error={fieldErrors.intervalDays}>
-                  <Input
-                    type="number"
-                    inputMode="numeric"
+                  <NumberInput
+                    integer
+                    {...BOUNDS.intervalDays}
+                    unit="ngày"
+                    unitInLabel
                     value={form.intervalDays}
-                    onChange={(e) => setForm({ ...form, intervalDays: e.target.value === '' ? '' : Number(e.target.value) })}
+                    onChange={(v) => setForm({ ...form, intervalDays: v === '' ? '' : Number(v) })}
                   />
                 </FormField>
                 <FormField label={vi.vet.firstDue} error={fieldErrors.firstDue}>
-                  <Input type="date" value={form.firstDue} onChange={(e) => setForm({ ...form, firstDue: e.target.value })} />
+                  <DateInput value={form.firstDue} onChange={(v) => setForm({ ...form, firstDue: v })} />
                 </FormField>
                 <FormField label={vi.vet.plannedMedicine} description={vi.vet.plannedHint} error={fieldErrors.plannedSupplyItemId}>
                   <SearchSelect
@@ -607,12 +703,12 @@ export default function CarePage() {
                   />
                 </FormField>
                 <FormField label={vi.vet.plannedDose} error={fieldErrors.plannedQuantity}>
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    min={1}
+                  <NumberInput
+                    integer
+                    {...BOUNDS.quantity}
+                    unit="đơn vị"
                     value={planned.quantity}
-                    onChange={(e) => setPlanned({ ...planned, quantity: e.target.value })}
+                    onChange={(v) => setPlanned({ ...planned, quantity: v })}
                   />
                 </FormField>
               </div>

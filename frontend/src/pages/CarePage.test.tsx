@@ -2,6 +2,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi as vitest } from 'vitest';
 import CarePage from './CarePage';
+import { today } from '../lib/validate';
 import { renderAs } from '../test/render';
 import { api } from '../api/api';
 import { ApiError } from '../api/client';
@@ -61,6 +62,7 @@ describe('care screen (task 5.2)', () => {
     );
     vitest.mocked(api.completeCare).mockResolvedValue({} as never);
     renderAs('VETERINARIAN', <CarePage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Theo ngựa' }));
     await userEvent.click(await screen.findByRole('combobox', { name: 'Ngựa' }));
     await userEvent.click(await screen.findByRole('option', { name: /Sao Mai/ }));
     await userEvent.click(await screen.findByRole('button', { name: 'Ghi nhận đã thực hiện' }));
@@ -68,6 +70,7 @@ describe('care screen (task 5.2)', () => {
     await userEvent.click(await screen.findByRole('option', { name: /BS\. Lan/ }));
     await userEvent.click(screen.getByRole('combobox', { name: /^Thuốc dùng/ }));
     await userEvent.click(await screen.findByRole('option', { name: /Vắc-xin uốn ván/ }));
+    await userEvent.type(screen.getByLabelText(/^Ngày thực hiện/), today());
     await userEvent.type(screen.getByLabelText(/^Số lượng đã dùng/), '1');
     await userEvent.click(screen.getByRole('button', { name: 'Lưu' }));
     expect(api.completeCare).toHaveBeenLastCalledWith(4, expect.objectContaining({ performer: 'BS. Lan', supplyItemId: 31, quantity: 1 }));
@@ -77,6 +80,7 @@ describe('care screen (task 5.2)', () => {
     await userEvent.type(screen.getByLabelText(/Người ngoài câu lạc bộ/), 'BS. Hưng (Chi cục)');
     await userEvent.click(screen.getByRole('combobox', { name: /^Thuốc dùng/ }));
     await userEvent.click(await screen.findByRole('option', { name: /Vắc-xin uốn ván/ }));
+    await userEvent.type(screen.getByLabelText(/^Ngày thực hiện/), today());
     await userEvent.type(screen.getByLabelText(/^Số lượng đã dùng/), '1');
     await userEvent.click(screen.getByRole('button', { name: 'Lưu' }));
     expect(api.completeCare).toHaveBeenLastCalledWith(4, expect.objectContaining({ performer: 'BS. Hưng (Chi cục)' }));
@@ -84,6 +88,7 @@ describe('care screen (task 5.2)', () => {
 
   test('AC-339 to AC-341 a vaccination picks a medicine in stock and caps the dose at the stock', async () => {
     renderAs('VETERINARIAN', <CarePage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Theo ngựa' }));
     await userEvent.click(await screen.findByRole('combobox', { name: 'Ngựa' }));
     await userEvent.click(await screen.findByRole('option', { name: /Sao Mai/ }));
     await userEvent.click(await screen.findByRole('button', { name: 'Ghi nhận đã thực hiện' }));
@@ -98,6 +103,7 @@ describe('care screen (task 5.2)', () => {
   test('AC-342 a hoof check keeps a free-text product and offers no medicine', async () => {
     vitest.mocked(api.careOf).mockResolvedValue(pageOf([{ ...overdue, id: 6, type: 'HOOF_CHECK', name: 'Cắt móng' }]));
     renderAs('VETERINARIAN', <CarePage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Theo ngựa' }));
     await userEvent.click(await screen.findByRole('combobox', { name: 'Ngựa' }));
     await userEvent.click(await screen.findByRole('option', { name: /Sao Mai/ }));
     await userEvent.click(await screen.findByRole('button', { name: 'Ghi nhận đã thực hiện' }));
@@ -106,11 +112,12 @@ describe('care screen (task 5.2)', () => {
     expect(api.medicines).not.toHaveBeenCalled();
   });
 
-  test('AC-099 an override without a reason is refused', async () => {
+  test('AC-099 and AC-443 an override without a reason is refused, from the horse tab as before the layout change', async () => {
     vitest.mocked(api.overrideCare).mockRejectedValue(
       new ApiError(400, 'REASON_REQUIRED', 'Bắt buộc nhập lý do.', { reason: 'Bắt buộc nhập lý do.' }),
     );
     renderAs('VETERINARIAN', <CarePage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Theo ngựa' }));
     await userEvent.click(await screen.findByRole('combobox', { name: 'Ngựa' }));
     await userEvent.click(await screen.findByRole('option', { name: /Sao Mai/ }));
     await userEvent.click(await screen.findByRole('button', { name: 'Sửa ngày đến hạn' }));
@@ -123,5 +130,47 @@ describe('care screen (task 5.2)', () => {
     renderAs('HEAD_TRAINER', <CarePage />);
     expect(screen.getByRole('alert')).toHaveTextContent('Bạn không có quyền');
     expect(api.careDue).not.toHaveBeenCalled();
+  });
+});
+
+describe('care page tabs (BR-209, DEC-069)', () => {
+  test('AC-431 the overview comes first with the overdue and due-soon counts and no horse picker', async () => {
+    vitest.mocked(api.careDue).mockImplementation(async (q) =>
+      q?.state === 'OVERDUE' ? pageOf([overdue]) : q?.state === 'DUE_SOON' ? pageOf([soon, soon, soon]) : pageOf([overdue, soon]),
+    );
+    renderAs('VETERINARIAN', <CarePage />);
+    await screen.findByRole('table', { name: 'Sắp đến hạn và quá hạn' });
+    expect(screen.queryByRole('combobox', { name: 'Ngựa' })).toBeNull();
+    expect(await screen.findByText('3')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tổng quan' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('AC-432 the horse tab asks for a horse, then lists and adds care for that horse only', async () => {
+    renderAs('VETERINARIAN', <CarePage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Theo ngựa' }));
+    expect(screen.getByText('Chọn một ngựa trước')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Thêm mục chăm sóc' })).toBeDisabled();
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Ngựa' }));
+    await userEvent.click(await screen.findByRole('option', { name: /Sao Mai/ }));
+    expect(await screen.findByRole('table', { name: 'Chăm sóc định kỳ' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Thêm mục chăm sóc' })).toBeEnabled();
+  });
+});
+
+describe('care forms validation (input-validation)', () => {
+  test('a completion with a future date or no performer is refused on the fields and nothing is sent', async () => {
+    vitest.mocked(api.completeCare).mockReset();
+    renderAs('VETERINARIAN', <CarePage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Theo ngựa' }));
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Ngựa' }));
+    await userEvent.click(await screen.findByRole('option', { name: /Sao Mai/ }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Ghi nhận đã thực hiện' }));
+    const day = screen.getByLabelText(/^Ngày thực hiện/);
+    expect(day).toHaveAttribute('data-max', today());
+    await userEvent.type(day, today(3));
+    await userEvent.click(screen.getByRole('button', { name: 'Lưu' }));
+    expect(day).toHaveAccessibleDescription(/không được ở tương lai/);
+    expect(screen.getByLabelText(/^Số lượng đã dùng/)).toHaveAttribute('aria-invalid', 'true');
+    expect(api.completeCare).not.toHaveBeenCalled();
   });
 });

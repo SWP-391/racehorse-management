@@ -10,6 +10,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Badge } from './ui/display';
 import { FormField } from './ui/form-field';
 import { Input } from './ui/input';
+import { DateInput } from './ui/typed-inputs';
+import { LIMITS } from '../lib/limits';
+import { blank, collect, date as date_, focusFirstInvalid, maxLength, today } from '../lib/validate';
 import { ListFooter } from './ui/list-toolbar';
 import { Callout } from './ui/states';
 import { NoMatches, PanelSearch } from './PanelSearch';
@@ -55,13 +58,19 @@ export function LeaveDialog({ groom, onClose }: { groom: Account | null; onClose
   async function record(e: FormEvent) {
     e.preventDefault();
     if (!groom) return;
-    if (!date) {
-      setFieldErrors({ date: vi.leave.dateRequired });
+    // The service refuses a day that has passed (BR-167): said on the field first.
+    const dateRefused = blank(date) ? vi.leave.dateRequired : date_(date, { notPast: true });
+    const refused = collect({
+      date: dateRefused ? (dateRefused === vi.validation.datePast ? 'Không ghi nghỉ phép cho ngày đã qua.' : dateRefused) : null,
+      reason: maxLength(reason, LIMITS.longText),
+    });
+    setFieldErrors(refused);
+    if (Object.keys(refused).length > 0) {
+      focusFirstInvalid(e.currentTarget as HTMLFormElement);
       return;
     }
     setPending(true);
     setError(null);
-    setFieldErrors({});
     try {
       await api.recordLeave(groom.id, { date, reason: reason.trim() || undefined });
       notify.success(vi.common.saved);
@@ -102,10 +111,10 @@ export function LeaveDialog({ groom, onClose }: { groom: Account | null; onClose
         <form className="grid gap-4" noValidate onSubmit={(e) => void record(e)}>
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField label={vi.leave.date} error={fieldErrors.date}>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <DateInput min={today()} value={date} onChange={setDate} />
             </FormField>
-            <FormField label={vi.leave.reason}>
-              <Input value={reason} onChange={(e) => setReason(e.target.value)} autoComplete="off" />
+            <FormField label={vi.leave.reason} error={fieldErrors.reason}>
+              <Input maxLength={LIMITS.longText} value={reason} onChange={(e) => setReason(e.target.value)} autoComplete="off" />
             </FormField>
           </div>
           <div>

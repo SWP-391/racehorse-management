@@ -5,6 +5,7 @@ import { LeaveDialog } from './LeaveDialog';
 import { renderAs } from '../test/render';
 import { api } from '../api/api';
 import { pageOf } from '../test/page';
+import { today } from '../lib/validate';
 import type { Account, Leave } from '../api/types';
 
 vitest.mock('../api/api', () => ({ api: { leave: vitest.fn(), leaveNotice: vitest.fn(), recordLeave: vitest.fn(), cancelLeave: vitest.fn() } }));
@@ -33,5 +34,37 @@ describe('leave list of a Groom (BR-167, BR-185)', () => {
     renderAs('CLUB_MANAGER', <LeaveDialog groom={groom} onClose={() => undefined} />);
     expect(await screen.findByText('Nghỉ phép')).toBeInTheDocument();
     expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+  });
+});
+
+describe('leave form validation (input-validation, BR-167)', () => {
+  beforeEach(() => {
+    vitest.mocked(api.leave).mockResolvedValue(pageOf([]) as never);
+    vitest.mocked(api.recordLeave).mockReset();
+  });
+
+  test('a missing date is named and nothing is sent', async () => {
+    renderAs('CLUB_MANAGER', <LeaveDialog groom={groom} onClose={() => undefined} />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Ghi nghỉ phép' }));
+    expect(screen.getByLabelText(/^Ngày nghỉ/)).toHaveAttribute('aria-invalid', 'true');
+    expect(api.recordLeave).not.toHaveBeenCalled();
+  });
+
+  test('a day that has passed is refused on the field with the service\'s wording and the picker starts at today', async () => {
+    renderAs('CLUB_MANAGER', <LeaveDialog groom={groom} onClose={() => undefined} />);
+    const day = await screen.findByLabelText(/^Ngày nghỉ/);
+    expect(day).toHaveAttribute('data-min', today());
+    await userEvent.type(day, today(-3));
+    await userEvent.click(screen.getByRole('button', { name: 'Ghi nghỉ phép' }));
+    expect(day).toHaveAccessibleDescription('Không ghi nghỉ phép cho ngày đã qua.');
+    expect(api.recordLeave).not.toHaveBeenCalled();
+  });
+
+  test('today is accepted and sent', async () => {
+    vitest.mocked(api.recordLeave).mockResolvedValue({} as never);
+    renderAs('CLUB_MANAGER', <LeaveDialog groom={groom} onClose={() => undefined} />);
+    await userEvent.type(await screen.findByLabelText(/^Ngày nghỉ/), today());
+    await userEvent.click(screen.getByRole('button', { name: 'Ghi nghỉ phép' }));
+    expect(api.recordLeave).toHaveBeenCalledWith(7, { date: today(), reason: undefined });
   });
 });

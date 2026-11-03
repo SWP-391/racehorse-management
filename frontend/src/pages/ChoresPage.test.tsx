@@ -5,7 +5,7 @@ import ChoresPage from './ChoresPage';
 import { renderAs, renderWithout } from '../test/render';
 import { api } from '../api/api';
 import { ApiError } from '../api/client';
-import type { ChoreDay, ChoreRangeHorse, ChoreState } from '../api/types';
+import type { ChoreDay, ChoreDaySummary, ChoreRangeHorse, ChoreState } from '../api/types';
 import { pageOf } from '../test/page';
 
 vitest.mock('../api/api', () => ({
@@ -16,6 +16,7 @@ vitest.mock('../api/api', () => ({
     choreHistory: vitest.fn(),
     rationsToday: vitest.fn(),
     choreRange: vitest.fn(),
+  choreDays: vitest.fn(),
     options: vitest.fn(),
     backfillChore: vitest.fn(),
   },
@@ -57,6 +58,7 @@ beforeEach(() => {
   vitest.mocked(api.cancelChore).mockReset().mockResolvedValue(open('FEEDING'));
   vitest.mocked(api.rationsToday).mockReset().mockResolvedValue([]);
   vitest.mocked(api.choreRange).mockReset().mockResolvedValue(pageOf([]));
+  vitest.mocked(api.choreDays).mockReset().mockResolvedValue(pageOf([]));
   vitest.mocked(api.options).mockReset().mockResolvedValue(pageOf([{ id: 9, label: 'Sao Mai', hint: 'VN-001' }]));
   vitest.mocked(api.backfillChore).mockReset().mockResolvedValue(open('FEEDING'));
 });
@@ -109,8 +111,14 @@ describe('ration beside the chore "Cho ăn" (BR-144)', () => {
     ]);
     renderAs('GROOM', <ChoresPage />);
     const table = await screen.findByRole('table', { name: 'Việc chăm sóc hằng ngày' });
-    expect(await within(table).findByText(/06:00 Bữa sáng: Yến mạch 2.5 kg/)).toBeInTheDocument();
+    // AC-422: the cell holds the number of meals and a button; the meals open in a popup.
+    expect(within(table).queryByText(/Yến mạch/)).not.toBeInTheDocument();
+    expect(await within(table).findByText('1 bữa')).toBeInTheDocument();
     expect(within(table).getByText('Chưa có khẩu phần')).toBeInTheDocument();
+    await userEvent.click(within(table).getByRole('button', { name: /Bữa ăn hôm nay/ }));
+    const dialog = within(await screen.findByRole('dialog'));
+    expect(dialog.getByText('06:00 Bữa sáng')).toBeInTheDocument();
+    expect(dialog.getByText('Yến mạch 2.5 kg')).toBeInTheDocument();
   });
 
   test('AC-261 marking Cho ăn is not blocked by a missing ration', async () => {
@@ -277,7 +285,7 @@ describe('chores screen (task 6.2)', () => {
   });
 });
 
-describe('chore history by date range (BR-188, AC-373 to AC-376)', () => {
+describe('chore history by date range (BR-188, BR-209, AC-373 to AC-376, AC-427, AC-428)', () => {
   const doneOf = (...codes: ChoreState['chore'][]): ChoreState[] =>
     (['FEEDING', 'STALL_CLEANING', 'WASHING', 'ICE_SOAK'] as const).map((chore) => ({
       chore,
@@ -290,57 +298,87 @@ describe('chore history by date range (BR-188, AC-373 to AC-376)', () => {
   const row = (days: { date: string; chores: ChoreState[] }[]): ChoreRangeHorse => ({
     horseId: 9, horseName: 'Sao Mai', registrationNumber: 'VN-001', days,
   });
+  const summary = (date: string, done: number, chores = 4): ChoreDaySummary => ({ date, horses: 1, chores, done });
 
   async function openHistory(role: 'GROOM' | 'HORSE_OWNER' | 'HEAD_TRAINER') {
     renderAs(role, <ChoresPage />);
     await userEvent.click(await screen.findByRole('button', { name: 'Lịch sử' }));
   }
 
-  test('AC-373 the last 7 days are asked for by default and each day shows how many chores were done', async () => {
-    vitest.mocked(api.choreRange).mockResolvedValue(
-      pageOf([row([{ date: '2026-10-22', chores: doneOf('FEEDING', 'WASHING') }, { date: '2026-10-21', chores: doneOf() }])]),
-    );
+  test('AC-373 the last 7 days are asked for by default and each day is a row with how many chores were done', async () => {
+    vitest.mocked(api.choreDays).mockResolvedValue(pageOf([summary('2026-10-22', 2), summary('2026-10-21', 0)]));
     await openHistory('HEAD_TRAINER');
-    const days = await screen.findByRole('list', { name: 'Các ngày của Sao Mai' });
-    expect(days).toHaveTextContent('22/10: 2/4');
-    expect(days).toHaveTextContent('21/10: 0/4');
-    expect(api.choreRange).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2026-10-16', to: '2026-10-22' }));
+    const table = await screen.findByRole('table', { name: 'Lịch sử chăm sóc' });
+    const rows = within(table).getAllByRole('row').slice(1);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent('22/10/2026');
+    expect(rows[0]).toHaveTextContent('2/4');
+    expect(rows[1]).toHaveTextContent('0/4');
+    expect(api.choreDays).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2026-10-16', to: '2026-10-22' }));
+  });
+
+  test('AC-427 many days are paged, not laid out in one row', async () => {
+    const items = Array.from({ length: 20 }, (_, i) => summary(`2026-10-${String(22 - (i % 20)).padStart(2, '0')}`, 1));
+    vitest.mocked(api.choreDays).mockResolvedValue({ items, page: 0, size: 20, total: 90 });
+    await openHistory('HEAD_TRAINER');
+    await screen.findByRole('table', { name: 'Lịch sử chăm sóc' });
+    expect(screen.getByText(/1–20 \/ 90/)).toBeInTheDocument();
+  });
+
+  test('AC-428 a day opens in a popup with the chores of each horse', async () => {
+    vitest.mocked(api.choreDays).mockResolvedValue(pageOf([summary('2026-10-22', 2)]));
+    vitest.mocked(api.choreRange).mockResolvedValue(pageOf([row([{ date: '2026-10-22', chores: doneOf('FEEDING', 'WASHING') }])]));
+    await openHistory('HEAD_TRAINER');
+    await userEvent.click(await screen.findByRole('button', { name: /Xem: Việc chăm sóc ngày 22\/10\/2026/ }));
+    const dialog = within(await screen.findByRole('dialog'));
+    expect(await dialog.findByText('Sao Mai')).toBeInTheDocument();
+    expect(dialog.getByText(/Cho ăn: .*Minh/)).toBeInTheDocument();
+    expect(api.choreRange).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2026-10-22', to: '2026-10-22' }));
   });
 
   test('AC-373 the history can be narrowed to one horse', async () => {
-    vitest.mocked(api.choreRange).mockResolvedValue(pageOf([row([{ date: '2026-10-22', chores: doneOf('FEEDING') }])]));
+    vitest.mocked(api.choreDays).mockResolvedValue(pageOf([summary('2026-10-22', 1)]));
     await openHistory('HEAD_TRAINER');
     await userEvent.click(await screen.findByRole('combobox', { name: 'Ngựa' }));
     await userEvent.click(await screen.findByRole('option', { name: /Sao Mai/ }));
-    await vitest.waitFor(() => expect(api.choreRange).toHaveBeenLastCalledWith(expect.objectContaining({ horseId: 9 })));
+    await vitest.waitFor(() => expect(api.choreDays).toHaveBeenLastCalledWith(expect.objectContaining({ horseId: 9 })));
   });
 
   test('AC-374 an end before the start is refused with a message and the earlier result stays', async () => {
-    vitest.mocked(api.choreRange).mockResolvedValueOnce(pageOf([row([{ date: '2026-10-22', chores: doneOf('FEEDING') }])]));
-    vitest.mocked(api.choreRange).mockRejectedValue(new ApiError(400, 'INVALID_RANGE', 'Ngày kết thúc phải sau ngày bắt đầu.', { to: 'Ngày kết thúc phải sau ngày bắt đầu.' }));
+    vitest.mocked(api.choreDays).mockResolvedValueOnce(pageOf([summary('2026-10-22', 1)]));
+    vitest.mocked(api.choreDays).mockRejectedValue(new ApiError(400, 'INVALID_RANGE', 'Ngày kết thúc phải sau ngày bắt đầu.', { to: 'Ngày kết thúc phải sau ngày bắt đầu.' }));
     await openHistory('HEAD_TRAINER');
-    await screen.findByRole('list', { name: 'Các ngày của Sao Mai' });
+    await screen.findByRole('table', { name: 'Lịch sử chăm sóc' });
     fireEvent.change(screen.getByLabelText('Đến ngày'), { target: { value: '2026-10-01' } });
     expect((await screen.findAllByText('Ngày kết thúc phải sau ngày bắt đầu.')).length).toBeGreaterThan(0);
-    expect(screen.getByRole('list', { name: 'Các ngày của Sao Mai' })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Lịch sử chăm sóc' })).toBeInTheDocument();
   });
 
   test('AC-376 the Owner reads done or not done and no horse picker or Groom name', async () => {
+    vitest.mocked(api.choreDays).mockResolvedValue(pageOf([summary('2026-10-22', 1)]));
     vitest.mocked(api.choreRange).mockResolvedValue(
       pageOf([row([{ date: '2026-10-22', chores: doneOf('FEEDING').map((c) => ({ ...c, groomName: null })) }])]),
     );
     await openHistory('HORSE_OWNER');
-    const days = await screen.findByRole('list', { name: 'Các ngày của Sao Mai' });
-    expect(days).toHaveTextContent('22/10: 1/4');
     expect(screen.queryByRole('combobox', { name: 'Ngựa' })).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: /Xem: Việc chăm sóc ngày/ }));
+    expect(await within(await screen.findByRole('dialog')).findByText(/Cho ăn: Đã xong/)).toBeInTheDocument();
     expect(screen.queryByText(/Minh/)).not.toBeInTheDocument();
   });
 
   test('AC-375 the history has no mark or cancel button; today stays the only place to mark', async () => {
-    vitest.mocked(api.choreRange).mockResolvedValue(pageOf([row([{ date: '2026-10-20', chores: doneOf() }])]));
+    vitest.mocked(api.choreDays).mockResolvedValue(pageOf([summary('2026-10-20', 0)]));
     await openHistory('GROOM');
-    await screen.findByRole('list', { name: 'Các ngày của Sao Mai' });
+    await screen.findByRole('table', { name: 'Lịch sử chăm sóc' });
     expect(screen.queryByRole('button', { name: /Đánh dấu/ })).not.toBeInTheDocument();
+  });
+
+  test('AC-425 the tab switch and the filters share one wrapping row', async () => {
+    vitest.mocked(api.choreDays).mockResolvedValue(pageOf([summary('2026-10-20', 0)]));
+    await openHistory('GROOM');
+    const row = screen.getByRole('group', { name: 'Chế độ xem' }).parentElement!;
+    expect(row.className).toContain('flex-wrap');
+    expect(within(row).getByLabelText('Từ ngày')).toBeInTheDocument();
   });
 });
 

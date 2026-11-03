@@ -70,6 +70,7 @@ describe('barn screen: areas as grids of stalls (BR-163 to BR-165)', () => {
 
   test('AC-220 horses without a stall are listed apart, an old text stall is flagged for placing again', async () => {
     renderAs('HEAD_TRAINER', <BarnPage />);
+    await userEvent.click(await screen.findByRole('button', { name: /^Ngựa chưa có chuồng/ }));
     const apart = await screen.findByRole('table', { name: 'Ngựa chưa có chuồng' });
     expect(within(apart).getByText('Mây Trắng')).toBeInTheDocument();
     expect(within(apart).getByText('Cần xếp lại')).toBeInTheDocument();
@@ -104,6 +105,7 @@ describe('barn screen: areas as grids of stalls (BR-163 to BR-165)', () => {
 
   test('AC-217 a horse without a stall is placed by choosing an area and a free slot', async () => {
     renderAs('CLUB_MANAGER', <BarnPage />);
+    await userEvent.click(await screen.findByRole('button', { name: /^Ngựa chưa có chuồng/ }));
     await userEvent.click(await screen.findByRole('button', { name: 'Xếp chuồng cho Mây Trắng' }));
     const dialog = await screen.findByRole('dialog', { name: 'Xếp chuồng cho Mây Trắng' });
     await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu' }));
@@ -120,6 +122,7 @@ describe('barn screen: areas as grids of stalls (BR-163 to BR-165)', () => {
   test('AC-218 a stall refused by the service shows its message in the dialog', async () => {
     vitest.mocked(api.setStall).mockRejectedValue(new ApiError(409, 'AREA_FULL', 'Khu "Khu B" đã đủ chỗ, hãy tạo khu mới.'));
     renderAs('CLUB_MANAGER', <BarnPage />);
+    await userEvent.click(await screen.findByRole('button', { name: /^Ngựa chưa có chuồng/ }));
     await userEvent.click(await screen.findByRole('button', { name: 'Xếp chuồng cho Mây Trắng' }));
     const dialog = await screen.findByRole('dialog');
     await userEvent.selectOptions(within(dialog).getByLabelText('Khu'), '2');
@@ -214,5 +217,35 @@ describe('barn screen: areas as grids of stalls (BR-163 to BR-165)', () => {
     renderWithout('VETERINARIAN', ['VIEW_BARN'], <BarnPage />);
     expect(screen.getByRole('alert')).toHaveTextContent('Bạn không có quyền');
     expect(api.barn).not.toHaveBeenCalled();
+  });
+});
+
+describe('barn search, area filter and the horses without a stall (BR-209, AC-435, AC-436)', () => {
+  test('AC-435 a search narrows the stalls to the matching horse and an area filter to one area', async () => {
+    renderAs('HEAD_TRAINER', <BarnPage />);
+    await screen.findByRole('list', { name: 'Khu A' });
+    await userEvent.type(screen.getByRole('searchbox'), 'khong co ngua nay');
+    expect(await screen.findByText('Không có kết quả phù hợp')).toBeInTheDocument();
+    await userEvent.clear(screen.getByRole('searchbox'));
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Khu' }), 'Khu B');
+    expect(screen.queryByRole('list', { name: 'Khu A' })).not.toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Khu B' })).toBeInTheDocument();
+  });
+
+  test('AC-436 "Ngựa chưa có chuồng" is a tab with a count, not a table under the areas', async () => {
+    renderAs('HEAD_TRAINER', <BarnPage />);
+    const tab = await screen.findByRole('button', { name: /^Ngựa chưa có chuồng/ });
+    expect(tab).toHaveTextContent(/\d/);
+    expect(screen.queryByRole('table', { name: 'Ngựa chưa có chuồng' })).not.toBeInTheDocument();
+    await userEvent.click(tab);
+    expect(await screen.findByRole('table', { name: 'Ngựa chưa có chuồng' })).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Khu A' })).not.toBeInTheDocument();
+  });
+
+  test('empty and occupied stalls share one row height', async () => {
+    renderAs('CLUB_MANAGER', <BarnPage />);
+    const list = await screen.findByRole('list', { name: 'Khu A' });
+    expect(list.className).toContain('auto-rows-fr');
+    for (const li of Array.from(list.children)) expect((li as HTMLElement).className + (li.firstElementChild?.className ?? '')).toContain('min-h-36');
   });
 });

@@ -8,7 +8,12 @@ import { HorseAvatar } from '../components/HorseAvatar';
 import { useHorsePhotos } from '../hooks/useHorsePhotos';
 import { vi } from '../i18n/vi';
 import { useLoad } from '../hooks/useLoad';
+import { useTabParam } from '../hooks/useTabParam';
+import { fold } from '../lib/text';
 import { notify } from '../lib/notify';
+import { NumberInput } from '../components/ui/typed-inputs';
+import { LIMITS } from '../lib/limits';
+import { focusFirstInvalid } from '../lib/validate';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,6 +24,8 @@ import {
   AlertDialogTitle,
 } from '../components/ui/alert-dialog';
 import { Button } from '../components/ui/button';
+import { FilterTabs } from '../components/ui/tabs';
+import { ListToolbar } from '../components/ui/list-toolbar';
 import { DataTable, type DataColumn } from '../components/ui/data-table';
 import { DataView } from '../components/ui/data-view';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
@@ -84,6 +91,10 @@ export default function BarnPage() {
   const [clearing, setClearing] = useState<{ horse: BarnHorse; where: string } | null>(null);
   const [deleting, setDeleting] = useState<BarnArea | null>(null);
 
+  // The search and the area filter narrow the stalls; the horses without a stall are their own tab (BR-209, DEC-069).
+  const [tab, setTab] = useTabParam(['stalls', 'unplaced'] as const);
+  const [text, setText] = useState('');
+  const [areaFilter, setAreaFilter] = useState('');
   const load = useLoad(() => api.barn(), [], allowed);
   const barn: Barn | null = load.state.data;
 
@@ -166,7 +177,10 @@ export default function BarnPage() {
     if (!Number.isInteger(capacity) || capacity < 1 || capacity > 200) errors.capacity = vi.barn.capacityInvalid;
     setAreaErrors(errors);
     setAreaError(null);
-    if (Object.keys(errors).length > 0) return;
+    if (Object.keys(errors).length > 0) {
+      focusFirstInvalid(e.currentTarget as HTMLFormElement);
+      return;
+    }
     setSaving(true);
     try {
       const input = { name: areaForm.name.trim(), capacity };
@@ -255,7 +269,7 @@ export default function BarnPage() {
         <li key={slot.slot}>
           <Button
             variant="outline"
-            className="h-full min-h-24 w-full border-dashed"
+            className="h-full min-h-36 w-full border-dashed"
             aria-label={vi.barn.emptySlotFor(area.name, slot.slot)}
             onClick={() => openPlace({ horse: null, locked: false, placed: false, areaId: String(area.id), slot: String(slot.slot) })}
           >
@@ -268,14 +282,14 @@ export default function BarnPage() {
           </Button>
         </li>
       ) : (
-        <li key={slot.slot} className="grid min-h-24 content-center gap-1 rounded-md border border-dashed px-3 py-2 text-center">
+        <li key={slot.slot} className="grid min-h-36 content-center gap-1 rounded-md border border-dashed px-3 py-2 text-center">
           <span className="font-medium">{vi.barn.stallOf(slot.slot)}</span>
           <span className="text-meta text-muted-foreground">{vi.barn.emptySlot}</span>
         </li>
       );
     }
     return (
-      <li key={slot.slot} className="grid min-h-24 content-start gap-2 rounded-md border bg-card px-3 py-2">
+      <li key={slot.slot} className="grid min-h-36 content-start gap-2 rounded-md border bg-card px-3 py-2">
         <span className="flex items-baseline justify-between gap-2">
           <span className="text-meta text-muted-foreground">{vi.barn.stallOf(slot.slot)}</span>
           <span className="tabular text-meta text-muted-foreground">{h.registrationNumber}</span>
@@ -336,49 +350,85 @@ export default function BarnPage() {
         isEmpty={(b) => b.areas.length === 0 && b.unplaced.length === 0}
         empty={<EmptyState icon={House} title={vi.barn.empty} text={manageAreas ? vi.barn.emptyHint : vi.barn.emptyHintStaff} />}
       >
-        {(b) => (
-          <div className="grid gap-10">
-            {b.areas.length === 0 && (
-              <EmptyState icon={House} title={vi.barn.empty} text={manageAreas ? vi.barn.emptyHint : vi.barn.emptyHintStaff} />
-            )}
-            {b.areas.map((area) => {
-              const used = area.slots.filter((s) => s.horse).length;
-              return (
-                <Section
-                  key={area.id}
-                  title={area.name}
-                  description={manageAreas || manageStalls ? vi.barn.occupied(used, area.capacity) : vi.barn.horseCount(used)}
-                  actions={
-                    manageAreas ? (
-                      <>
-                        <Button variant="outline" size="sm" aria-label={vi.barn.editArea(area.name)} onClick={() => openArea(area)}>
-                          {vi.barn.editAreaTitle}
-                        </Button>
-                        <Button variant="ghost" size="sm" aria-label={vi.barn.deleteArea(area.name)} onClick={() => setDeleting(area)}>
-                          {vi.barn.deleteTitle}
-                        </Button>
-                      </>
-                    ) : undefined
-                  }
-                >
-                  <ul aria-label={area.name} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {area.slots.map((slot) => slotCard(area, slot))}
-                  </ul>
+        {(b) => {
+          const q = fold(text.trim());
+          const unplaced = [...b.unplaced].sort((x, y) => byText(x.horseName, y.horseName)).filter((h) => !q || fold(`${h.horseName} ${h.registrationNumber}`).includes(q));
+          const areas = b.areas
+            .filter((area) => !areaFilter || String(area.id) === areaFilter)
+            .map((area) => ({
+              area,
+              // Searching narrows to the stalls whose horse or stall number matches; without a search every stall shows.
+              slots: q
+                ? area.slots.filter((s) => fold(`${vi.barn.stallOf(s.slot)} ${s.horse?.horseName ?? ''} ${s.horse?.registrationNumber ?? ''}`).includes(q))
+                : area.slots,
+            }))
+            .filter(({ slots }) => !q || slots.length > 0);
+          return (
+            <div className="grid gap-6">
+              <FilterTabs
+                label={vi.barn.view}
+                value={tab}
+                onChange={setTab}
+                options={[
+                  { value: 'stalls', label: vi.barn.tabStalls },
+                  { value: 'unplaced', label: vi.barn.withoutStall, count: b.unplaced.length },
+                ]}
+              />
+              <ListToolbar query={text} onQuery={setText} placeholder={vi.barn.searchPlaceholder}>
+                {tab === 'stalls' && (
+                  <Select aria-label={vi.barn.area} value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)} className="w-52">
+                    <option value="">{vi.barn.anyArea}</option>
+                    {b.areas.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </ListToolbar>
+              {tab === 'stalls' ? (
+                <div className="grid gap-10">
+                  {b.areas.length === 0 && (
+                    <EmptyState icon={House} title={vi.barn.empty} text={manageAreas ? vi.barn.emptyHint : vi.barn.emptyHintStaff} />
+                  )}
+                  {b.areas.length > 0 && areas.length === 0 && <EmptyState icon={House} title={vi.common.noResults} text={vi.common.noResultsHint} />}
+                  {areas.map(({ area, slots }) => {
+                    const used = area.slots.filter((s) => s.horse).length;
+                    return (
+                      <Section
+                        key={area.id}
+                        title={area.name}
+                        description={manageAreas || manageStalls ? vi.barn.occupied(used, area.capacity) : vi.barn.horseCount(used)}
+                        actions={
+                          manageAreas ? (
+                            <>
+                              <Button variant="outline" size="sm" aria-label={vi.barn.editArea(area.name)} onClick={() => openArea(area)}>
+                                {vi.barn.editAreaTitle}
+                              </Button>
+                              <Button variant="ghost" size="sm" aria-label={vi.barn.deleteArea(area.name)} onClick={() => setDeleting(area)}>
+                                {vi.barn.deleteTitle}
+                              </Button>
+                            </>
+                          ) : undefined
+                        }
+                      >
+                        <ul aria-label={area.name} className="grid auto-rows-fr gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          {slots.map((slot) => slotCard(area, slot))}
+                        </ul>
+                      </Section>
+                    );
+                  })}
+                </div>
+              ) : unplaced.length === 0 ? (
+                <EmptyState icon={House} title={q ? vi.common.noResults : vi.barn.allPlaced} text={q ? vi.common.noResultsHint : undefined} />
+              ) : (
+                <Section title={vi.barn.withoutStall} description={vi.barn.withoutStallNote}>
+                  <DataTable caption={vi.barn.withoutStall} data={unplaced} columns={unplacedColumns} rowKey={(h) => h.horseId} />
                 </Section>
-              );
-            })}
-            {b.unplaced.length > 0 && (
-              <Section title={vi.barn.withoutStall} description={vi.barn.withoutStallNote}>
-                <DataTable
-                  caption={vi.barn.withoutStall}
-                  data={[...b.unplaced].sort((x, y) => byText(x.horseName, y.horseName))}
-                  columns={unplacedColumns}
-                  rowKey={(h) => h.horseId}
-                />
-              </Section>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          );
+        }}
       </DataView>
 
       <Dialog open={place !== null} onOpenChange={(open) => !open && setPlace(null)}>
@@ -460,15 +510,17 @@ export default function BarnPage() {
                 </Callout>
               )}
               <FormField label={vi.barn.areaName} error={areaErrors.name}>
-                <Input value={areaForm.name} onChange={(e) => setAreaForm({ ...areaForm, name: e.target.value })} autoComplete="off" />
+                <Input maxLength={LIMITS.areaName} value={areaForm.name} onChange={(e) => setAreaForm({ ...areaForm, name: e.target.value })} autoComplete="off" />
               </FormField>
               <FormField label={vi.barn.capacity} error={areaErrors.capacity}>
-                <Input
-                  type="number"
+                <NumberInput
+                  integer
                   min={1}
                   max={200}
+                  unit="ô"
+                  unitInLabel
                   value={areaForm.capacity}
-                  onChange={(e) => setAreaForm({ ...areaForm, capacity: e.target.value })}
+                  onChange={(v) => setAreaForm({ ...areaForm, capacity: v })}
                 />
               </FormField>
               <DialogFooter>

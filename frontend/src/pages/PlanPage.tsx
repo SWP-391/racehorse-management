@@ -28,6 +28,7 @@ import { Badge, PageHeader, Section } from '../components/ui/display';
 import { FormField } from '../components/ui/form-field';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Input, Textarea } from '../components/ui/input';
+import { DateInput, NumberInput, TimeInput } from '../components/ui/typed-inputs';
 import { Label } from '../components/ui/label';
 import { ListFooter } from '../components/ui/list-toolbar';
 import { Select } from '../components/ui/select';
@@ -36,6 +37,7 @@ import { NoMatches, PanelSearch } from '../components/PanelSearch';
 import { hhmm } from '../i18n/time';
 import { vi } from '../i18n/vi';
 import { notify } from '../lib/notify';
+import { BOUNDS, blank, collect, date, focusFirstInvalid, maxLength, number, required, today } from '../lib/validate';
 
 const emptySession = (): SessionInput => ({
   date: '',
@@ -125,6 +127,20 @@ export default function PlanPage() {
 
   function addSession(e: FormEvent) {
     e.preventDefault();
+    // The service's own rules (SessionService), asked before anything is sent.
+    const refused = collect({
+      date: required(form.date) ?? date(form.date, { notPast: true, min: undefined }),
+      startTime: blank(form.startTime) ? 'Bắt buộc nhập giờ bắt đầu.' : null,
+      type: blank(form.type) ? 'Bắt buộc chọn.' : null,
+      plannedDurationMin: number(form.plannedDurationMin, { ...BOUNDS.durationMin, integer: true, required: true }),
+      targetDistanceM: number(form.targetDistanceM, { ...BOUNDS.distanceM, integer: true }),
+      targetSurface: maxLength(form.targetSurface, 100),
+    });
+    setFieldErrors(refused);
+    if (Object.keys(refused).length > 0) {
+      focusFirstInvalid(e.currentTarget);
+      return;
+    }
     save();
   }
 
@@ -323,10 +339,10 @@ export default function PlanPage() {
                   <form onSubmit={addSession} aria-label={vi.training.newSession} noValidate className="grid max-w-4xl gap-5">
                     <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
                       <FormField label={vi.training.date} error={fieldErrors.date}>
-                        <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+                        <DateInput min={today()} value={form.date} onChange={(v) => setForm({ ...form, date: v })} />
                       </FormField>
                       <FormField label={vi.training.startTime} error={fieldErrors.startTime}>
-                        <Input type="time" required value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} />
+                        <TimeInput required value={form.startTime} onChange={(v) => setForm({ ...form, startTime: v })} />
                       </FormField>
                       <FormField label={vi.training.type} error={fieldErrors.type}>
                         <Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as SessionInput['type'] })}>
@@ -338,22 +354,28 @@ export default function PlanPage() {
                           ))}
                         </Select>
                       </FormField>
-                      <FormField label={vi.training.plannedDuration} description={endPreview(form.startTime, form.plannedDurationMin)}>
-                        <Input
-                          type="number"
+                      <FormField label={vi.training.plannedDuration} description={endPreview(form.startTime, form.plannedDurationMin)} error={fieldErrors.plannedDurationMin}>
+                        <NumberInput
+                          integer
+                          {...BOUNDS.durationMin}
+                          unit="phút"
+                          unitInLabel
                           value={form.plannedDurationMin}
-                          onChange={(e) => setForm({ ...form, plannedDurationMin: toNumber(e.target.value) })}
+                          onChange={(v) => setForm({ ...form, plannedDurationMin: toNumber(v) })}
                         />
                       </FormField>
-                      <FormField label={vi.training.targetDistance}>
-                        <Input
-                          type="number"
+                      <FormField label={vi.training.targetDistance} error={fieldErrors.targetDistanceM}>
+                        <NumberInput
+                          integer
+                          {...BOUNDS.distanceM}
+                          unit="m"
+                          unitInLabel
                           value={form.targetDistanceM}
-                          onChange={(e) => setForm({ ...form, targetDistanceM: toNumber(e.target.value) })}
+                          onChange={(v) => setForm({ ...form, targetDistanceM: toNumber(v) })}
                         />
                       </FormField>
                       <FormField label={vi.training.targetSurface}>
-                        <Input value={form.targetSurface} onChange={(e) => setForm({ ...form, targetSurface: e.target.value })} />
+                        <Input maxLength={100} value={form.targetSurface} onChange={(e) => setForm({ ...form, targetSurface: e.target.value })} />
                       </FormField>
                       <ResponsiblePicker
                         horseId={plan.horseId}
@@ -394,16 +416,22 @@ export default function PlanPage() {
                       </div>
                     )}
                     <div className="flex flex-wrap items-end gap-3">
-                      <FormField label={vi.training.shiftDays} className="w-full sm:w-56">
-                        <Input type="number" value={days} onChange={(e) => setDays(toNumber(e.target.value))} />
+                      <FormField label={vi.training.shiftDays} error={fieldErrors.days} className="w-full sm:w-56">
+                        <NumberInput integer min={-365} max={365} unit="ngày" unitInLabel value={days} onChange={(v) => setDays(toNumber(v))} />
                       </FormField>
                       <Button
                         variant="outline"
-                        onClick={() =>
+                        onClick={() => {
+                          const refused = number(days, { integer: true, required: true, min: -365, max: 365 }) ?? (Number(days) === 0 ? 'Nhập số ngày cần dịch (khác 0).' : null);
+                          if (refused) {
+                            setFieldErrors({ days: refused });
+                            focusFirstInvalid();
+                            return;
+                          }
                           void act(async () => {
                             setPreview(await api.shiftPlan(id, Number(days), true));
-                          })
-                        }
+                          });
+                        }}
                       >
                         <Eye aria-hidden />
                         {vi.training.preview}

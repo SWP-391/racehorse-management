@@ -26,6 +26,9 @@ import { DataView } from '../components/ui/data-view';
 import { Badge, DefinitionList, PageHeader, Section } from '../components/ui/display';
 import { FormField } from '../components/ui/form-field';
 import { Input, Textarea } from '../components/ui/input';
+import { DateTimeInput, NumberInput } from '../components/ui/typed-inputs';
+import { LIMITS } from '../lib/limits';
+import { BOUNDS, blank, collect, focusFirstInvalid, maxLength, number, required } from '../lib/validate';
 import { Select } from '../components/ui/select';
 import { SearchSelect, type Chosen } from '../components/ui/search-select';
 import { SessionEnd } from '../components/SessionEnd';
@@ -209,7 +212,24 @@ export default function SessionPage() {
     e.preventDefault();
     if (!current) return;
     setError(null);
-    setFieldErrors({});
+    // SessionService's rules for the indicators (BR-036, BR-038), plus the plausibility bounds of design D6.
+    const refused = collect({
+      distanceM: number(form.distanceM, { ...BOUNDS.distanceM, integer: true, required: true }),
+      durationMin: number(form.durationMin, { ...BOUNDS.durationMin, integer: true, required: true }),
+      surface: required(form.surface) ?? maxLength(form.surface, LIMITS.surface),
+      intensity: required(form.intensity),
+      form: blank(form.form) ? 'Bắt buộc chấm phong độ.' : number(form.form, { ...BOUNDS.form, integer: true }),
+      avgHeartRate: number(form.avgHeartRate, { ...BOUNDS.heartRateBpm, integer: true }),
+      maxSpeed: number(form.maxSpeed, { positive: true, max: BOUNDS.speedKmh.max }),
+      weightKg: number(form.weightKg, BOUNDS.weightKg),
+      comment: maxLength(form.comment, LIMITS.longText),
+      earlyEndReason: maxLength(form.earlyEndReason, LIMITS.longText),
+    });
+    setFieldErrors(refused);
+    if (Object.keys(refused).length > 0) {
+      focusFirstInvalid(e.currentTarget as HTMLFormElement);
+      return;
+    }
     setPending(true);
     try {
       setSession(current.session.state === 'AUTO_CLOSED' ? await api.completeIndicators(id, form) : await api.endSession(id, form));
@@ -316,13 +336,13 @@ export default function SessionPage() {
                     <div className="grid max-w-4xl gap-5">
                       <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
                         <FormField label={vi.training.distance} error={fieldErrors.distanceM}>
-                          <Input type="number" value={form.distanceM} onChange={(e) => setForm({ ...form, distanceM: num(e.target.value) })} />
+                          <NumberInput integer {...BOUNDS.distanceM} unit="m" unitInLabel value={form.distanceM} onChange={(v) => setForm({ ...form, distanceM: num(v) })} />
                         </FormField>
                         <FormField label={vi.training.durationActual} error={fieldErrors.durationMin}>
-                          <Input type="number" value={form.durationMin} onChange={(e) => setForm({ ...form, durationMin: num(e.target.value) })} />
+                          <NumberInput integer {...BOUNDS.durationMin} unit="phút" unitInLabel value={form.durationMin} onChange={(v) => setForm({ ...form, durationMin: num(v) })} />
                         </FormField>
                         <FormField label={vi.training.surface} error={fieldErrors.surface}>
-                          <Input value={form.surface} onChange={(e) => setForm({ ...form, surface: e.target.value })} />
+                          <Input maxLength={LIMITS.surface} value={form.surface} onChange={(e) => setForm({ ...form, surface: e.target.value })} />
                         </FormField>
                         <FormField label={vi.training.intensity} error={fieldErrors.intensity}>
                           <Select
@@ -336,34 +356,34 @@ export default function SessionPage() {
                           </Select>
                         </FormField>
                         <FormField label={vi.training.form} error={fieldErrors.form}>
-                          <Input type="number" min={1} max={5} value={form.form} onChange={(e) => setForm({ ...form, form: num(e.target.value) })} />
+                          <NumberInput integer {...BOUNDS.form} unit="điểm" unitInLabel value={form.form} onChange={(v) => setForm({ ...form, form: num(v) })} />
                         </FormField>
-                        <FormField label={vi.training.avgHeartRate}>
-                          <Input type="number" value={form.avgHeartRate} onChange={(e) => setForm({ ...form, avgHeartRate: num(e.target.value) })} />
+                        <FormField label={vi.training.avgHeartRate} error={fieldErrors.avgHeartRate}>
+                          <NumberInput integer {...BOUNDS.heartRateBpm} unit="bpm" unitInLabel value={form.avgHeartRate} onChange={(v) => setForm({ ...form, avgHeartRate: num(v) })} />
                         </FormField>
-                        <FormField label={vi.training.maxSpeed}>
-                          <Input type="number" value={form.maxSpeed} onChange={(e) => setForm({ ...form, maxSpeed: num(e.target.value) })} />
+                        <FormField label={vi.training.maxSpeed} error={fieldErrors.maxSpeed}>
+                          <NumberInput min={0} max={BOUNDS.speedKmh.max} step={0.1} unit="km/h" unitInLabel value={form.maxSpeed} onChange={(v) => setForm({ ...form, maxSpeed: num(v) })} />
                         </FormField>
-                        <FormField label={vi.training.weight}>
-                          <Input type="number" value={form.weightKg} onChange={(e) => setForm({ ...form, weightKg: num(e.target.value) })} />
+                        <FormField label={vi.training.weight} error={fieldErrors.weightKg}>
+                          <NumberInput {...BOUNDS.weightKg} step={0.1} unit="kg" unitInLabel value={form.weightKg} onChange={(v) => setForm({ ...form, weightKg: num(v) })} />
                         </FormField>
                         {session.state === 'IN_PROGRESS' ? (
-                          <FormField label={vi.training.earlyEndReason}>
-                            <Input value={form.earlyEndReason ?? ''} onChange={(e) => setForm({ ...form, earlyEndReason: e.target.value })} />
+                          <FormField label={vi.training.earlyEndReason} error={fieldErrors.earlyEndReason}>
+                            <Input maxLength={LIMITS.longText} value={form.earlyEndReason ?? ''} onChange={(e) => setForm({ ...form, earlyEndReason: e.target.value })} />
                           </FormField>
                         ) : (
                           <FormField label={vi.training.actualEndTime}>
-                            <Input
-                              type="datetime-local"
-                              onChange={(e) =>
-                                setForm({ ...form, actualEndTime: e.target.value ? new Date(e.target.value).toISOString() : undefined })
-                              }
+                            <DateTimeInput
+                              dateLabel={vi.training.actualEndDay}
+                              timeLabel={vi.training.actualEndTime}
+                              value=""
+                              onChange={(v) => setForm({ ...form, actualEndTime: v ? new Date(v).toISOString() : undefined })}
                             />
                           </FormField>
                         )}
                       </div>
                       <FormField label={vi.training.comment} className="md:max-w-2xl">
-                        <Textarea value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} />
+                        <Textarea maxLength={LIMITS.longText} value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} />
                       </FormField>
                       <div className="flex sm:justify-end">
                         <Button type="submit" loading={pending} className="w-full sm:w-auto">

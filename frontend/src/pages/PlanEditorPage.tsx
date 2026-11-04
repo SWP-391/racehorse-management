@@ -12,6 +12,9 @@ import { DataView } from '../components/ui/data-view';
 import { PageHeader, Section } from '../components/ui/display';
 import { FormField } from '../components/ui/form-field';
 import { Input } from '../components/ui/input';
+import { DateInput, NumberInput } from '../components/ui/typed-inputs';
+import { LIMITS } from '../lib/limits';
+import { BOUNDS, collect, date, dateRange, focusFirstInvalid, maxLength, number, required, type Check } from '../lib/validate';
 import { Callout, DetailSkeleton, EmptyState } from '../components/ui/states';
 import { vi } from '../i18n/vi';
 
@@ -34,6 +37,28 @@ const PHASE_FIELDS = [
   ['weeklyVolumeKm', vi.training.weeklyVolume, 'number'],
   ['surface', vi.training.surface, 'text'],
 ] as const;
+
+const TEXT_LIMIT = { name: LIMITS.phaseName, goal: LIMITS.longText, surface: LIMITS.surface } as const;
+
+/** The service's rules for one phase (PlanService), keyed like its answer: `phases[0].name`. */
+function phaseErrors(phases: Phase[]): Record<string, string> {
+  return collect(
+    Object.fromEntries(
+      phases.flatMap((p, i) => {
+        const at = (k: string) => `phases[${i}].${k}`;
+        return [
+          [at('name'), required(p.name) ?? maxLength(p.name, LIMITS.phaseName)],
+          [at('startDate'), required(p.startDate) ?? date(p.startDate)],
+          [at('endDate'), required(p.endDate) ?? date(p.endDate) ?? dateRange(p.startDate, p.endDate)],
+          [at('goal'), required(p.goal) ?? maxLength(p.goal, LIMITS.longText)],
+          [at('distanceM'), number(p.distanceM, { ...BOUNDS.distanceM, integer: true, required: true })],
+          [at('weeklyVolumeKm'), number(p.weeklyVolumeKm, { ...BOUNDS.volumeKmWeek, required: true })],
+          [at('surface'), required(p.surface) ?? maxLength(p.surface, LIMITS.surface)],
+        ] as [string, Check][];
+      }),
+    ),
+  );
+}
 
 /** Create or edit a plan with ordered phases (BR-030). Shows the new-horse label (BR-009). */
 export default function PlanEditorPage() {
@@ -90,7 +115,12 @@ export default function PlanEditorPage() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    setFieldErrors({});
+    const refused = { ...phaseErrors(phases), ...collect({ title: maxLength(title, LIMITS.planTitle) }) };
+    setFieldErrors(refused);
+    if (Object.keys(refused).length > 0) {
+      focusFirstInvalid(e.currentTarget as HTMLFormElement);
+      return;
+    }
     setPending(true);
     try {
       const saved = planId ? await api.updatePlan(planId, title, phases) : await api.createPlan(horseId!, title, phases);
@@ -121,7 +151,7 @@ export default function PlanEditorPage() {
         </Callout>
       )}
       <FormField label={vi.training.title} error={fieldErrors.title}>
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+        <Input maxLength={LIMITS.planTitle} value={title} onChange={(e) => setTitle(e.target.value)} />
       </FormField>
       <Section id="editor-phases" title={vi.training.phases}>
         <div className="grid gap-6">
@@ -133,13 +163,25 @@ export default function PlanEditorPage() {
               <div className="grid gap-5 md:grid-cols-2">
                 {PHASE_FIELDS.map(([key, label, type]) => (
                   <FormField key={key} label={label} error={fieldErrors[`phases[${i}].${key}`]}>
-                    <Input
-                      type={type}
-                      value={p[key] as string | number}
-                      onChange={(e) =>
-                        setPhase(i, { [key]: type === 'number' ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value })
-                      }
-                    />
+                    {type === 'number' ? (
+                      <NumberInput
+                        {...(key === 'distanceM' ? BOUNDS.distanceM : BOUNDS.volumeKmWeek)}
+                        integer={key === 'distanceM'}
+                        step={key === 'distanceM' ? 1 : 'any'}
+                        unit={key === 'distanceM' ? 'm' : 'km/tuần'}
+                        unitInLabel
+                        value={p[key] as string | number}
+                        onChange={(v) => setPhase(i, { [key]: v === '' ? '' : Number(v) })}
+                      />
+                    ) : type === 'date' ? (
+                      <DateInput value={p[key] as string} onChange={(v) => setPhase(i, { [key]: v })} />
+                    ) : (
+                      <Input
+                        maxLength={TEXT_LIMIT[key as keyof typeof TEXT_LIMIT]}
+                        value={p[key] as string}
+                        onChange={(e) => setPhase(i, { [key]: e.target.value })}
+                      />
+                    )}
                   </FormField>
                 ))}
               </div>

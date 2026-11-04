@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi as vitest } from 'vitest';
 import SessionPage from './SessionPage';
@@ -55,14 +55,71 @@ describe('session page (task 8.2, 8.3)', () => {
     expect(await screen.findByText('Đang tập')).toBeInTheDocument();
   });
 
-  test('AC-043 a missing form rating is named', async () => {
+  test('AC-043 a missing form rating is named and nothing is sent', async () => {
     vitest.mocked(api.session).mockResolvedValue({ session: { ...base, state: 'IN_PROGRESS' }, lockPendingAtEnd: false });
-    vitest.mocked(api.endSession).mockRejectedValue(
-      new ApiError(400, 'INDICATORS_INCOMPLETE', 'Thiếu hoặc sai chỉ số: form.', { form: 'Bắt buộc chấm phong độ.' }),
-    );
+    vitest.mocked(api.endSession).mockReset();
     renderAs('HEAD_TRAINER', <SessionPage />, '/sessions/:id', '/sessions/7');
     await userEvent.click(await screen.findByRole('button', { name: 'Kết thúc buổi tập' }));
     expect(screen.getByLabelText(/^Phong độ/)).toHaveAccessibleDescription(/Bắt buộc chấm phong độ\./);
+    for (const label of [/^Cự ly/, /^Thời lượng/, /^Mặt sân/, /^Cường độ/]) {
+      expect(screen.getByLabelText(label), String(label)).toHaveAttribute('aria-invalid', 'true');
+    }
+    expect(api.endSession).not.toHaveBeenCalled();
+  });
+
+  test('a form rating outside 1 to 5, a heart rate or weight outside the plausible range are refused on the field', async () => {
+    vitest.mocked(api.session).mockResolvedValue({ session: { ...base, state: 'IN_PROGRESS' }, lockPendingAtEnd: false });
+    vitest.mocked(api.endSession).mockReset();
+    renderAs('HEAD_TRAINER', <SessionPage />, '/sessions/:id', '/sessions/7');
+    await userEvent.click(await screen.findByRole('button', { name: 'Kết thúc buổi tập' }));
+    fireEvent.change(screen.getByLabelText(/^Cự ly/), { target: { value: '1600' } });
+    fireEvent.change(screen.getByLabelText(/^Thời lượng/), { target: { value: '45' } });
+    await userEvent.type(screen.getByLabelText(/^Mặt sân/), 'Cỏ');
+    await userEvent.selectOptions(screen.getByLabelText(/^Cường độ/), 'MEDIUM');
+    fireEvent.change(screen.getByLabelText(/^Phong độ/), { target: { value: '6' } });
+    fireEvent.change(screen.getByLabelText(/^Nhịp tim/), { target: { value: '1500' } });
+    fireEvent.change(screen.getByLabelText(/^Cân nặng/), { target: { value: '-5' } });
+    fireEvent.change(screen.getByLabelText(/^Vận tốc/), { target: { value: '0' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Kết thúc buổi tập' }));
+    expect(screen.getByLabelText(/^Phong độ/)).toHaveAccessibleDescription('Giá trị tối đa là 5.');
+    expect(screen.getByLabelText(/^Nhịp tim/)).toHaveAccessibleDescription('Giá trị tối đa là 300.');
+    expect(screen.getByLabelText(/^Cân nặng/)).toHaveAccessibleDescription('Giá trị tối thiểu là 100.');
+    expect(screen.getByLabelText(/^Vận tốc/)).toHaveAccessibleDescription('Giá trị phải lớn hơn 0.');
+    expect(api.endSession).not.toHaveBeenCalled();
+  });
+
+  test('a valid set of indicators is sent as numbers and the units are carried by the fields', async () => {
+    vitest.mocked(api.session).mockResolvedValue({ session: { ...base, state: 'IN_PROGRESS' }, lockPendingAtEnd: false });
+    vitest.mocked(api.endSession).mockReset().mockResolvedValue({ ...base, state: 'COMPLETED' } as never);
+    renderAs('HEAD_TRAINER', <SessionPage />, '/sessions/:id', '/sessions/7');
+    await userEvent.click(await screen.findByRole('button', { name: 'Kết thúc buổi tập' }));
+    expect(screen.getByLabelText(/^Cự ly/)).toHaveAttribute('data-unit', 'm');
+    expect(screen.getByLabelText(/^Nhịp tim/)).toHaveAttribute('data-unit', 'bpm');
+    expect(screen.getByLabelText(/^Vận tốc/)).toHaveAttribute('data-unit', 'km/h');
+    expect(screen.getByLabelText(/^Cân nặng/)).toHaveAttribute('data-unit', 'kg');
+    fireEvent.change(screen.getByLabelText(/^Cự ly/), { target: { value: '1600' } });
+    fireEvent.change(screen.getByLabelText(/^Thời lượng/), { target: { value: '45' } });
+    await userEvent.type(screen.getByLabelText(/^Mặt sân/), 'Cỏ');
+    await userEvent.selectOptions(screen.getByLabelText(/^Cường độ/), 'MEDIUM');
+    fireEvent.change(screen.getByLabelText(/^Phong độ/), { target: { value: '4' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Kết thúc buổi tập' }));
+    expect(api.endSession).toHaveBeenCalledWith(7, expect.objectContaining({ distanceM: 1600, durationMin: 45, form: 4, intensity: 'MEDIUM' }));
+  });
+
+  test('the service\'s own answer is still shown on the field when the client let a value through', async () => {
+    vitest.mocked(api.session).mockResolvedValue({ session: { ...base, state: 'IN_PROGRESS' }, lockPendingAtEnd: false });
+    vitest.mocked(api.endSession).mockReset().mockRejectedValue(
+      new ApiError(400, 'INDICATORS_INCOMPLETE', 'Thiếu hoặc sai chỉ số.', { distanceM: 'Cự ly phải lớn hơn 0.' }),
+    );
+    renderAs('HEAD_TRAINER', <SessionPage />, '/sessions/:id', '/sessions/7');
+    await userEvent.click(await screen.findByRole('button', { name: 'Kết thúc buổi tập' }));
+    fireEvent.change(screen.getByLabelText(/^Cự ly/), { target: { value: '1600' } });
+    fireEvent.change(screen.getByLabelText(/^Thời lượng/), { target: { value: '45' } });
+    await userEvent.type(screen.getByLabelText(/^Mặt sân/), 'Cỏ');
+    await userEvent.selectOptions(screen.getByLabelText(/^Cường độ/), 'MEDIUM');
+    fireEvent.change(screen.getByLabelText(/^Phong độ/), { target: { value: '4' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Kết thúc buổi tập' }));
+    expect(await screen.findByText('Cự ly phải lớn hơn 0.')).toBeInTheDocument();
   });
 
   test('AC-089 the Head Trainer sees that the horse will be locked when the session ends', async () => {

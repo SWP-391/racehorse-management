@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { vi as vitest } from 'vitest';
 import PlanPage from './PlanPage';
 import PlanEditorPage from './PlanEditorPage';
+import { today } from '../lib/validate';
 import { renderAs } from '../test/render';
 import { api } from '../api/api';
 import { ApiError } from '../api/client';
@@ -49,6 +50,9 @@ beforeEach(() => {
   });
 });
 
+// A session cannot be planned in the past, so the form tests use tomorrow whatever day they run.
+const DAY = today(1);
+
 describe('plan page (task 8.1, 8.2)', () => {
   test('AC-030 completion is suggested, the plan stays active', async () => {
     vitest.mocked(api.plan).mockResolvedValue({ ...plan, completionSuggested: true });
@@ -75,7 +79,7 @@ describe('plan page (task 8.1, 8.2)', () => {
 
   async function fillSession(time: string) {
     const form = await screen.findByRole('form', { name: 'Thêm buổi tập' });
-    fireEvent.change(within(form).getByLabelText('Ngày'), { target: { value: '2026-10-25' } });
+    fireEvent.change(within(form).getByLabelText('Ngày'), { target: { value: DAY } });
     if (time) fireEvent.change(within(form).getByLabelText('Giờ bắt đầu'), { target: { value: time } });
     await userEvent.selectOptions(within(form).getByLabelText('Loại buổi tập'), 'GALLOP');
     // Only Grooms who are free for the time range are offered (BR-162): the options arrive once date and time are set.
@@ -95,7 +99,7 @@ describe('plan page (task 8.1, 8.2)', () => {
     const form = await fillSession('07:00');
     vitest.mocked(api.sessionsOf).mockResolvedValue(pageOf([{ ...awaiting, state: 'SCHEDULED', startTime: '07:00:00' }]));
     await userEvent.click(within(form).getByRole('button', { name: 'Thêm buổi tập' }));
-    expect(api.createSession).toHaveBeenCalledWith(5, expect.objectContaining({ date: '2026-10-25', startTime: '07:00', responsiblePersonId: 3 }));
+    expect(api.createSession).toHaveBeenCalledWith(5, expect.objectContaining({ date: DAY, startTime: '07:00', responsiblePersonId: 3 }));
     const table = screen.getAllByRole('table')[1];
     expect(await within(table).findByText('07:00')).toBeInTheDocument();
   });
@@ -139,7 +143,7 @@ describe('plan page (task 8.1, 8.2)', () => {
     });
     renderAs('HEAD_TRAINER', <PlanPage />, '/plans/:id', '/plans/5');
     const form = await fillSession('07:00');
-    expect(api.assignableGrooms).toHaveBeenLastCalledWith({ horseId: 9, date: '2026-10-25', startTime: '07:00', durationMin: 60, sessionId: undefined });
+    expect(api.assignableGrooms).toHaveBeenLastCalledWith({ horseId: 9, date: DAY, startTime: '07:00', durationMin: 60, sessionId: undefined });
     const picker = within(form).getByRole('combobox', { name: 'Người phụ trách' });
     expect(picker).toHaveTextContent('Anh Tuấn');
     await userEvent.click(picker);
@@ -160,7 +164,7 @@ describe('plan page (task 8.1, 8.2)', () => {
     });
     renderAs('HEAD_TRAINER', <PlanPage />, '/plans/:id', '/plans/5');
     const form = await screen.findByRole('form', { name: 'Thêm buổi tập' });
-    fireEvent.change(within(form).getByLabelText('Ngày'), { target: { value: '2026-10-25' } });
+    fireEvent.change(within(form).getByLabelText('Ngày'), { target: { value: DAY } });
     fireEvent.change(within(form).getByLabelText('Giờ bắt đầu'), { target: { value: '06:30' } });
     expect(await within(form).findByText(/Không có Groom nào rảnh/)).toHaveTextContent('Giờ rảnh gần nhất: 08:00');
   });
@@ -175,6 +179,52 @@ describe('plan page (task 8.1, 8.2)', () => {
     expect(within(form).getByText('Có thể chọn sau khi xếp lịch (nháp).')).toBeInTheDocument();
     await userEvent.click(within(form).getByRole('button', { name: 'Thêm buổi tập' }));
     expect(api.createSession).toHaveBeenCalledWith(5, expect.objectContaining({ draft: true, responsiblePersonId: '' }));
+  });
+
+  test('a session form with nothing filled names every missing field and sends nothing', async () => {
+    vitest.mocked(api.plan).mockResolvedValue(plan);
+    vitest.mocked(api.createSession).mockReset();
+    renderAs('HEAD_TRAINER', <PlanPage />, '/plans/:id', '/plans/5');
+    const form = await screen.findByRole('form', { name: 'Thêm buổi tập' });
+    await userEvent.click(within(form).getByRole('button', { name: 'Thêm buổi tập' }));
+    expect(within(form).getByLabelText('Ngày')).toHaveAttribute('aria-invalid', 'true');
+    expect(within(form).getByLabelText(/^Giờ bắt đầu/)).toHaveAccessibleDescription('Bắt buộc nhập giờ bắt đầu.');
+    expect(within(form).getByLabelText(/^Loại buổi tập/)).toHaveAccessibleDescription('Bắt buộc chọn.');
+    expect(api.createSession).not.toHaveBeenCalled();
+  });
+
+  test('a session date in the past, a zero duration and a distance above the limit are refused on the field', async () => {
+    vitest.mocked(api.plan).mockResolvedValue(plan);
+    vitest.mocked(api.createSession).mockReset();
+    renderAs('HEAD_TRAINER', <PlanPage />, '/plans/:id', '/plans/5');
+    const form = await fillSession('07:00');
+    fireEvent.change(within(form).getByLabelText('Ngày'), { target: { value: today(-1) } });
+    const duration = within(form).getByLabelText(/^Thời lượng/);
+    const distance = within(form).getByLabelText(/^Cự ly mục tiêu/);
+    expect(duration).toHaveAttribute('data-unit', 'phút');
+    expect(distance).toHaveAttribute('data-unit', 'm');
+    fireEvent.change(duration, { target: { value: '0' } });
+    fireEvent.change(distance, { target: { value: '99999' } });
+    await userEvent.click(within(form).getByRole('button', { name: 'Thêm buổi tập' }));
+    expect(within(form).getByLabelText('Ngày')).toHaveAccessibleDescription(/không được ở quá khứ/);
+    expect(duration).toHaveAccessibleDescription(/tối thiểu là 1/);
+    expect(distance).toHaveAccessibleDescription(/tối đa là 50000/);
+    expect(api.createSession).not.toHaveBeenCalled();
+  });
+
+  test('shifting by zero or a fraction is refused on the field and the service is not asked', async () => {
+    vitest.mocked(api.plan).mockResolvedValue(plan);
+    vitest.mocked(api.sessionsOf).mockResolvedValue(pageOf([awaiting]));
+    vitest.mocked(api.shiftPlan).mockReset();
+    renderAs('HEAD_TRAINER', <PlanPage />, '/plans/:id', '/plans/5');
+    const review = await screen.findByRole('region', { name: 'Xem xét sau khi gỡ khóa' });
+    const days = within(review).getByLabelText(/^Dịch lịch/);
+    await userEvent.click(within(review).getByRole('button', { name: 'Xem trước' }));
+    expect(days).toHaveAccessibleDescription('Bắt buộc nhập.');
+    await userEvent.type(days, '0');
+    await userEvent.click(within(review).getByRole('button', { name: 'Xem trước' }));
+    expect(days).toHaveAccessibleDescription('Nhập số ngày cần dịch (khác 0).');
+    expect(api.shiftPlan).not.toHaveBeenCalled();
   });
 
   test('AC-290 and AC-291 another trainer reads the plan without any write control', async () => {
@@ -193,6 +243,52 @@ describe('plan page (task 8.1, 8.2)', () => {
     vitest.mocked(api.horseHealth).mockResolvedValue(health(true));
     renderAs('HEAD_TRAINER', <PlanEditorPage />, '/horses/:id/plans/new', '/horses/9/plans/new');
     expect(await screen.findByText('Ngựa mới nhập đàn – chưa khám sức khỏe')).toBeInTheDocument();
+  });
+});
+
+describe('plan editor validation (input-validation, BR-030)', () => {
+  beforeEach(() => {
+    vitest.mocked(api.horseHealth).mockResolvedValue(health(false));
+    vitest.mocked(api.createPlan).mockReset();
+  });
+
+  test('an empty phase names every field and sends nothing', async () => {
+    renderAs('HEAD_TRAINER', <PlanEditorPage />, '/horses/:id/plans/new', '/horses/9/plans/new');
+    await userEvent.click(await screen.findByRole('button', { name: 'Lưu' }));
+    for (const label of [/^Tên giai đoạn/, /^Bắt đầu/, /^Kết thúc/, /^Mục tiêu/, /^Cự ly/, /^Khối lượng/, /^Mặt sân/]) {
+      expect(screen.getByLabelText(label), String(label)).toHaveAttribute('aria-invalid', 'true');
+    }
+    expect(api.createPlan).not.toHaveBeenCalled();
+  });
+
+  test('an end before the start, a zero distance and a fractional distance are refused on the field', async () => {
+    renderAs('HEAD_TRAINER', <PlanEditorPage />, '/horses/:id/plans/new', '/horses/9/plans/new');
+    await userEvent.type(await screen.findByLabelText(/^Tên giai đoạn/), 'Nền tảng');
+    fireEvent.change(screen.getByLabelText(/^Bắt đầu/), { target: { value: '2026-11-10' } });
+    fireEvent.change(screen.getByLabelText(/^Kết thúc/), { target: { value: '2026-11-01' } });
+    await userEvent.type(screen.getByLabelText(/^Mục tiêu/), 'Sức bền');
+    fireEvent.change(screen.getByLabelText(/^Cự ly/), { target: { value: '0' } });
+    fireEvent.change(screen.getByLabelText(/^Khối lượng/), { target: { value: '12' } });
+    await userEvent.type(screen.getByLabelText(/^Mặt sân/), 'Cỏ');
+    await userEvent.click(screen.getByRole('button', { name: 'Lưu' }));
+    expect(screen.getByLabelText(/^Kết thúc/)).toHaveAccessibleDescription('Ngày kết thúc không được trước ngày bắt đầu.');
+    expect(screen.getByLabelText(/^Cự ly/)).toHaveAccessibleDescription(/tối thiểu là 1/);
+    fireEvent.change(screen.getByLabelText(/^Cự ly/), { target: { value: '1600.5' } });
+    await userEvent.click(screen.getByRole('button', { name: 'Lưu' }));
+    expect(screen.getByLabelText(/^Cự ly/)).toHaveAccessibleDescription('Hãy nhập số nguyên.');
+    expect(api.createPlan).not.toHaveBeenCalled();
+  });
+
+  test('every number carries its range and unit and every text its column length', async () => {
+    renderAs('HEAD_TRAINER', <PlanEditorPage />, '/horses/:id/plans/new', '/horses/9/plans/new');
+    const distance = await screen.findByLabelText(/^Cự ly/);
+    expect(distance).toHaveAttribute('min', '1');
+    expect(distance).toHaveAttribute('max', '50000');
+    expect(distance).toHaveAttribute('step', '1');
+    expect(distance).toHaveAttribute('data-unit', 'm');
+    expect(screen.getByLabelText(/^Khối lượng/)).toHaveAttribute('data-unit', 'km/tuần');
+    expect(screen.getByLabelText(/^Tên giai đoạn/)).toHaveAttribute('maxlength', '200');
+    expect(screen.getByLabelText(/^Mặt sân/)).toHaveAttribute('maxlength', '100');
   });
 });
 

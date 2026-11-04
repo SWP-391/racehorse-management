@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi as vitest } from 'vitest';
 import SuppliesPage from './SuppliesPage';
@@ -14,14 +14,15 @@ vitest.mock('../api/api', () => ({
     proposals: vitest.fn(), approveProposal: vitest.fn(), rejectProposal: vitest.fn(),
     receiveStock: vitest.fn(), adjustStock: vitest.fn(), setSupplyPrice: vitest.fn(), stockMovements: vitest.fn(),
     expectedReceipts: vitest.fn(), expectReceipt: vitest.fn(), cancelExpectedReceipt: vitest.fn(),
+    supplyUnits: vitest.fn(), addSupplyUnit: vitest.fn(), renameSupplyUnit: vitest.fn(), setSupplyUnitActive: vitest.fn(),
   },
 }));
 
 const oats: SupplyItem = {
-  id: 1, name: 'Yến mạch', category: 'FEED', unit: 'kg', quantity: 60, unitPrice: 25000, daysOfCover: 6, state: 'RESTOCK', dailyUse: 10,
+  id: 1, name: 'Yến mạch', category: 'FEED', unit: 'kg', unitId: 1, quantity: 60, unitPrice: 25000, daysOfCover: 6, state: 'RESTOCK', dailyUse: 10,
   active: true,
 };
-const old: SupplyItem = { id: 2, name: 'Cỏ khô', category: 'FEED', unit: 'bó', quantity: 0, unitPrice: 0, state: 'OUT', active: false };
+const old: SupplyItem = { id: 2, name: 'Cỏ khô', category: 'FEED', unit: 'bó', unitId: 9, quantity: 0, unitPrice: 0, state: 'OUT', active: false };
 const pending: RestockProposal = {
   id: 7, itemId: 1, itemName: 'Yến mạch', unit: 'kg', groomName: 'Minh', quantity: 200, note: 'Sắp hết', state: 'PENDING',
   createdAt: '2026-10-22T01:00:00Z', decidedByName: null, decidedAt: null, decisionReason: null,
@@ -30,7 +31,15 @@ const rejected: RestockProposal = {
   ...pending, id: 6, state: 'REJECTED', decidedByName: 'Quản lý', decidedAt: '2026-10-21T02:00:00Z', decisionReason: 'Còn đủ dùng',
 };
 
+const units = [
+  { id: 1, name: 'kg', active: true, itemCount: 1 },
+  { id: 2, name: 'lít', active: true, itemCount: 0 },
+  { id: 9, name: 'bó', active: false, itemCount: 1 },
+];
+
 beforeEach(() => {
+  vitest.mocked(api.supplyUnits).mockReset().mockResolvedValue(units);
+  for (const f of [api.addSupplyUnit, api.renameSupplyUnit, api.setSupplyUnitActive]) vitest.mocked(f).mockReset().mockResolvedValue({} as never);
   vitest.mocked(api.supplies).mockReset().mockResolvedValue(pageOf([oats, old]));
   // The service filters by state: the pending list asks for PENDING only.
   vitest.mocked(api.proposals).mockReset().mockImplementation(async (query) =>
@@ -62,8 +71,8 @@ describe('supplies screen (task 6.4)', () => {
     expect(within(dialog).getByText('Nhập giá từ 0 trở lên.')).toBeInTheDocument();
     await userEvent.type(within(dialog).getByLabelText('Tên vật tư'), 'Cám');
     await userEvent.selectOptions(within(dialog).getByLabelText('Loại'), 'FEED');
-    await userEvent.type(within(dialog).getByLabelText('Đơn vị'), 'kg');
-    await userEvent.type(within(dialog).getByLabelText('Giá (VND)'), '25000');
+    await userEvent.selectOptions(within(dialog).getByLabelText('Đơn vị'), '1');
+    await userEvent.type(within(dialog).getByLabelText('Giá (VND)'), '25');
     await userEvent.type(within(dialog).getByLabelText('Tồn đầu'), '-3');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu' }));
     expect(within(dialog).getByText('Số lượng tồn phải là số nguyên từ 0 trở lên.')).toBeInTheDocument();
@@ -72,7 +81,7 @@ describe('supplies screen (task 6.4)', () => {
     await userEvent.type(within(dialog).getByLabelText('Tồn đầu'), '50');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu' }));
     expect(api.createSupply).toHaveBeenCalledWith({
-      name: 'Cám', category: 'FEED', unit: 'kg', active: true, price: 25000, openingQuantity: 50,
+      name: 'Cám', category: 'FEED', unitId: 1, active: true, price: 25000, openingQuantity: 50,
     });
   });
 
@@ -83,7 +92,7 @@ describe('supplies screen (task 6.4)', () => {
     const dialog = await screen.findByRole('dialog');
     await userEvent.type(within(dialog).getByLabelText('Tên vật tư'), 'Yến mạch');
     await userEvent.selectOptions(within(dialog).getByLabelText('Loại'), 'FEED');
-    await userEvent.type(within(dialog).getByLabelText('Đơn vị'), 'kg');
+    await userEvent.selectOptions(within(dialog).getByLabelText('Đơn vị'), '1');
     await userEvent.type(within(dialog).getByLabelText('Giá (VND)'), '1000');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu' }));
     expect(await within(dialog).findByText('Vật tư Yến mạch đã có trong loại Thức ăn.')).toBeInTheDocument();
@@ -93,7 +102,7 @@ describe('supplies screen (task 6.4)', () => {
     renderAs('CLUB_MANAGER', <SuppliesPage />);
     await userEvent.click(await screen.findByRole('button', { name: 'Ngừng dùng Yến mạch' }));
     await confirmWith('Ngừng dùng');
-    expect(api.updateSupply).toHaveBeenCalledWith(1, { name: 'Yến mạch', category: 'FEED', unit: 'kg', active: false });
+    expect(api.updateSupply).toHaveBeenCalledWith(1, { name: 'Yến mạch', category: 'FEED', unitId: 1, active: false });
     await userEvent.click(screen.getByRole('button', { name: 'Dùng lại Cỏ khô' }));
     await confirmWith('Dùng lại');
     expect(api.updateSupply).toHaveBeenCalledWith(2, expect.objectContaining({ active: true }));
@@ -133,6 +142,7 @@ describe('supplies screen (task 6.4)', () => {
 
   test('AC-228 the Club Manager approves a pending proposal', async () => {
     renderAs('CLUB_MANAGER', <SuppliesPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Đề xuất chờ duyệt' }));
     const table = await screen.findByRole('table', { name: 'Đề xuất chờ duyệt' });
     expect(within(table).getByText('Minh')).toBeInTheDocument();
     expect(within(table).queryByText('Còn đủ dùng')).not.toBeInTheDocument();
@@ -144,6 +154,7 @@ describe('supplies screen (task 6.4)', () => {
 
   test('AC-229 and AC-230 rejecting needs a reason', async () => {
     renderAs('CLUB_MANAGER', <SuppliesPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Đề xuất chờ duyệt' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Từ chối đề xuất Yến mạch' }));
     const dialog = await screen.findByRole('dialog', { name: 'Từ chối đề xuất' });
     await userEvent.click(within(dialog).getByRole('button', { name: 'Từ chối đề xuất' }));
@@ -157,6 +168,7 @@ describe('supplies screen (task 6.4)', () => {
   test('AC-230 an already decided proposal shows the refusal', async () => {
     vitest.mocked(api.approveProposal).mockRejectedValue(new ApiError(409, 'PROPOSAL_DECIDED', 'Đề xuất đã được quyết định.'));
     renderAs('CLUB_MANAGER', <SuppliesPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Đề xuất chờ duyệt' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Duyệt đề xuất Yến mạch' }));
     await confirmWith('Duyệt');
     await vitest.waitFor(() => expect(api.proposals).toHaveBeenCalledTimes(2));
@@ -189,6 +201,7 @@ describe('supplies screen (task 6.4)', () => {
 
   test('AC-229 and AC-231 a Groom sees own proposals with state and reason, and no manager controls', async () => {
     renderAs('GROOM', <SuppliesPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Đề xuất của bạn' }));
     const mine = await screen.findByRole('table', { name: 'Đề xuất của bạn' });
     expect(within(mine).getByText('Chờ duyệt')).toBeInTheDocument();
     expect(within(mine).getByText('Từ chối')).toBeInTheDocument();
@@ -205,12 +218,130 @@ describe('supplies screen (task 6.4)', () => {
     vitest.mocked(api.supplies).mockResolvedValue(pageOf([]));
     await userEvent.click(screen.getByRole('button', { name: 'Thử lại' }));
     expect(await screen.findByText('Chưa có vật tư nào')).toBeInTheDocument();
-    expect(screen.getByText('Không có đề xuất nào chờ duyệt')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Đề xuất chờ duyệt/ }));
+    expect(await screen.findByText('Không có đề xuất nào chờ duyệt')).toBeInTheDocument();
   });
 
   test('AC-232 a user without VIEW_SUPPLIES gets the access-denied state and no request', () => {
     renderWithout('GROOM', ['VIEW_SUPPLIES'], <SuppliesPage />);
     expect(screen.getByRole('alert')).toHaveTextContent('Bạn không có quyền');
     expect(api.supplies).not.toHaveBeenCalled();
+  });
+});
+
+describe('supply form validation (input-validation)', () => {
+  test('the unit is chosen from a list, the price and stock carry their bounds and a long name is stopped', async () => {
+    renderAs('CLUB_MANAGER', <SuppliesPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Thêm vật tư' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Thêm vật tư' });
+    expect(within(dialog).getByLabelText('Đơn vị').tagName).toBe('SELECT');
+    expect(within(dialog).getByLabelText('Giá (VND)')).toHaveAttribute('data-unit', 'VND');
+    expect(within(dialog).getByLabelText('Tính tiền theo')).toHaveValue('1000');
+    expect(within(dialog).getByLabelText('Tồn đầu')).toHaveAttribute('step', '1');
+    expect(within(dialog).getByLabelText('Tên vật tư')).toHaveAttribute('maxlength', '200');
+  });
+
+  test('a fractional stock and a price above the limit are refused on the fields', async () => {
+    vitest.mocked(api.createSupply).mockClear();
+    renderAs('CLUB_MANAGER', <SuppliesPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Thêm vật tư' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Thêm vật tư' });
+    await userEvent.type(within(dialog).getByLabelText('Tên vật tư'), 'Cám');
+    await userEvent.selectOptions(within(dialog).getByLabelText('Loại'), 'FEED');
+    await userEvent.selectOptions(within(dialog).getByLabelText('Đơn vị'), '1');
+    await userEvent.type(within(dialog).getByLabelText('Giá (VND)'), '99999999999');
+    // The key "." is blocked in a whole-number field; a pasted or scripted value still reaches the rule.
+    fireEvent.change(within(dialog).getByLabelText('Tồn đầu'), { target: { value: '2.5' } });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu' }));
+    expect(within(dialog).getByLabelText('Giá (VND)')).toHaveAccessibleDescription(/tối đa/);
+    expect(within(dialog).getByLabelText('Tồn đầu')).toHaveAttribute('aria-invalid', 'true');
+    expect(api.createSupply).not.toHaveBeenCalled();
+  });
+
+  test('AC-392 the unit field is a list of active units, there is no free-text unit field', async () => {
+    renderAs('CLUB_MANAGER', <SuppliesPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Thêm vật tư' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Thêm vật tư' });
+    const field = within(dialog).getByLabelText('Đơn vị');
+    expect(field.tagName).toBe('SELECT');
+    expect(within(field).getByRole('option', { name: 'kg' })).toBeInTheDocument();
+    expect(within(field).queryByRole('option', { name: /bó/ })).not.toBeInTheDocument();
+  });
+
+  test('an item keeps its deactivated unit in the list and says so', async () => {
+    renderAs('CLUB_MANAGER', <SuppliesPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Sửa Cỏ khô' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Sửa vật tư' });
+    expect(within(within(dialog).getByLabelText('Đơn vị')).getByRole('option', { name: /bó \(ngừng dùng/ })).toBeInTheDocument();
+  });
+
+  test('with no active unit the form says so and is not saved', async () => {
+    vitest.mocked(api.supplyUnits).mockResolvedValue([{ id: 9, name: 'bó', active: false, itemCount: 1 }]);
+    renderAs('CLUB_MANAGER', <SuppliesPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Thêm vật tư' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Thêm vật tư' });
+    expect(await within(dialog).findByText(/Chưa có đơn vị nào đang dùng/)).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByLabelText('Tên vật tư'), 'Cám');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu' }));
+    expect(api.createSupply).not.toHaveBeenCalled();
+  });
+
+  test('AC-388 the Club Manager adds a unit; a bad name is refused before sending', async () => {
+    renderAs('CLUB_MANAGER', <SuppliesPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Đơn vị' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Thêm đơn vị' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText('Tên đơn vị'), '123');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu' }));
+    expect(within(dialog).getByText('Tên đơn vị phải có ít nhất một chữ cái.')).toBeInTheDocument();
+    expect(api.addSupplyUnit).not.toHaveBeenCalled();
+    await userEvent.clear(within(dialog).getByLabelText('Tên đơn vị'));
+    await userEvent.type(within(dialog).getByLabelText('Tên đơn vị'), '  chai   lớn ');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu' }));
+    await vitest.waitFor(() => expect(api.addSupplyUnit).toHaveBeenCalledWith('  chai   lớn '));
+  });
+
+  test('AC-389 a unit is renamed, deactivated and reactivated from the table, never deleted', async () => {
+    renderAs('CLUB_MANAGER', <SuppliesPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Đơn vị' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Đổi tên đơn vị kg' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.clear(within(dialog).getByLabelText('Tên đơn vị'));
+    await userEvent.type(within(dialog).getByLabelText('Tên đơn vị'), 'kilô');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu' }));
+    await vitest.waitFor(() => expect(api.renameSupplyUnit).toHaveBeenCalledWith(1, 'kilô'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Ngừng dùng đơn vị lít' }));
+    await vitest.waitFor(() => expect(api.setSupplyUnitActive).toHaveBeenCalledWith(2, false));
+    await userEvent.click(await screen.findByRole('button', { name: 'Dùng lại đơn vị bó' }));
+    await vitest.waitFor(() => expect(api.setSupplyUnitActive).toHaveBeenCalledWith(9, true));
+    expect(screen.queryByRole('button', { name: /Xóa/ })).not.toBeInTheDocument();
+  });
+
+  test('a Groom does not see the units section', async () => {
+    renderAs('GROOM', <SuppliesPage />);
+    await screen.findAllByText('Yến mạch');
+    expect(screen.queryByRole('button', { name: 'Thêm đơn vị' })).not.toBeInTheDocument();
+    expect(api.supplyUnits).not.toHaveBeenCalled();
+  });
+});
+
+describe('supplies tabs (BR-209, AC-429, AC-430)', () => {
+  test('AC-429 a Groom has "Vật tư đang dùng" and "Đề xuất của bạn" as two tabs, supplies first', async () => {
+    renderAs('GROOM', <SuppliesPage />);
+    expect(await screen.findByRole('button', { name: 'Vật tư đang dùng' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('table', { name: 'Đề xuất của bạn' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Đề xuất của bạn' }));
+    expect(await screen.findByRole('table', { name: 'Đề xuất của bạn' })).toBeInTheDocument();
+  });
+
+  test('AC-430 the Club Manager has the catalog, the pending proposals and the units each in its own tab', async () => {
+    renderAs('CLUB_MANAGER', <SuppliesPage />);
+    for (const name of ['Danh mục vật tư', 'Đề xuất chờ duyệt', 'Đơn vị']) {
+      expect(await screen.findByRole('button', { name: new RegExp(name) })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole('table', { name: 'Đề xuất chờ duyệt' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Đề xuất chờ duyệt/ }));
+    expect(await screen.findByRole('table', { name: 'Đề xuất chờ duyệt' })).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: 'Danh mục vật tư' })).not.toBeInTheDocument();
   });
 });

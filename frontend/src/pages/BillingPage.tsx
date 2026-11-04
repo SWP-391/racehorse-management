@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from 'react';
-import { CircleAlert, Eye, Receipt, ShieldOff } from 'lucide-react';
+import { CircleAlert, CircleCheck, Eye, Plus, Receipt, ShieldOff, X } from 'lucide-react';
 import { api } from '../api/api';
 import { PagerBar } from '../components/PagerBar';
 import type { FeeTypeView, InvoiceRow, PriceRow, StatementOwnerRow } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { fieldsOf, messageOf } from '../components/ErrorText';
 import { StatementView } from '../components/StatementView';
-import { CategoryBreakdown, MonthlyTrend, OwnerShare } from '../components/CostCharts';
+import { ExportButton, PrintLink } from '../components/StatementActions';
+import { CategoryBreakdown, MonthlyTrend, OverviewCharts } from '../components/CostCharts';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogTitle } from '../components/ui/alert-dialog';
 import { Button } from '../components/ui/button';
 import { DataTable, type DataColumn } from '../components/ui/data-table';
@@ -15,9 +16,16 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Badge, PageHeader, Section } from '../components/ui/display';
 import { FormField } from '../components/ui/form-field';
 import { Input } from '../components/ui/input';
+import { DateInput } from '../components/ui/typed-inputs';
+import { MoneyInput } from '../components/ui/money-input';
+import { LIMITS } from '../lib/limits';
+import { BOUNDS, blank, collect, date as date_, focusFirstInvalid, maxLength, number, required, today } from '../lib/validate';
 import { SearchSelect, type Chosen } from '../components/ui/search-select';
 import { Select } from '../components/ui/select';
 import { Callout, EmptyState, Skeleton } from '../components/ui/states';
+import { ListFooter, ListToolbar } from '../components/ui/list-toolbar';
+import { fold } from '../lib/text';
+import { useTabParam } from '../hooks/useTabParam';
 import { FilterTabs } from '../components/ui/tabs';
 import { vi } from '../i18n/vi';
 import { useLoad } from '../hooks/useLoad';
@@ -26,10 +34,11 @@ import { clubDateTime, clubMonth, formatVnd } from '../lib/utils';
 
 const MONTHS_BACK = 18;
 
-function MonthSelect({ value, onChange }: { value: string; onChange: (m: string) => void }) {
+function MonthSelect({ value, onChange, allowAll }: { value: string; onChange: (m: string) => void; allowAll?: boolean }) {
   return (
-    <FormField label={vi.billing.month} className="w-44">
+    <FormField label={vi.billing.month} className="w-56">
       <Select value={value} onChange={(e) => onChange(e.target.value)}>
+        {allowAll && <option value="all">{vi.billing.allMonths}</option>}
         {Array.from({ length: MONTHS_BACK }, (_, i) => clubMonth(-i)).map((m) => (
           <option key={m} value={m}>
             {m}
@@ -42,6 +51,7 @@ function MonthSelect({ value, onChange }: { value: string; onChange: (m: string)
 
 /** The signed-in owner's own statement of the month. */
 function OwnerView() {
+  const { me, can } = useAuth();
   const [month, setMonth] = useState(clubMonth());
   const statement = useLoad(() => api.myStatement(month), [month]);
   return (
@@ -53,7 +63,23 @@ function OwnerView() {
           {(s) => <CategoryBreakdown statement={s} />}
         </DataView>
       </div>
-      <DataView load={statement}>{(s) => <StatementView statement={s} />}</DataView>
+      <DataView
+        load={statement}
+      >
+        {(s) => (
+          <StatementView
+            statement={s}
+            actions={
+              can('EXPORT_BILLING') && me ? (
+                <>
+                  <ExportButton run={() => api.exportMyStatement(month)} />
+                  <PrintLink to={`/billing/print/statement/${me.id}?month=${month}`} />
+                </>
+              ) : undefined
+            }
+          />
+        )}
+      </DataView>
     </div>
   );
 }
@@ -72,7 +98,17 @@ function AdjustDialog({ open, onClose, onSaved }: { open: boolean; onClose: () =
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    setErrors({});
+    const refused = collect({
+      ownerId: owner ? null : 'Bắt buộc chọn chủ ngựa.',
+      date: required(date) ?? date_(date),
+      amount: number(amount, { integer: true, min: -BOUNDS.price.max, max: BOUNDS.price.max, required: true }),
+      reason: blank(reason) ? 'Bắt buộc nhập lý do.' : maxLength(reason, LIMITS.invoiceReason),
+    });
+    setErrors(refused);
+    if (Object.keys(refused).length > 0) {
+      focusFirstInvalid(e.currentTarget as HTMLFormElement);
+      return;
+    }
     setPending(true);
     try {
       await api.addAdjustment({
@@ -117,13 +153,13 @@ function AdjustDialog({ open, onClose, onSaved }: { open: boolean; onClose: () =
             <SearchSelect value={horse} onChange={setHorse} clearable load={(q) => api.options('horses', { q })} />
           </FormField>
           <FormField label={`${a.date} *`} error={errors.date}>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <DateInput max={today()} value={date} onChange={setDate} />
           </FormField>
           <FormField label={`${a.amount} *`} error={errors.amount}>
-            <Input type="number" step="1" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <MoneyInput allowNegative value={amount} onChange={setAmount} />
           </FormField>
           <FormField label={`${a.reason} *`} error={errors.reason}>
-            <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+            <Input maxLength={LIMITS.invoiceReason} value={reason} onChange={(e) => setReason(e.target.value)} />
           </FormField>
           <Button type="submit" loading={pending}>
             {a.submit}
@@ -139,23 +175,33 @@ function StatementsTab({ month }: { month: string }) {
   const owners = useLoad(() => api.statementOwners(month), [month]);
   const [selected, setSelected] = useState<StatementOwnerRow | null>(null);
   const statement = useLoad(() => api.ownerStatement(selected!.ownerId, month), [selected?.ownerId, month], selected !== null);
+  // The owners of the month are one short list from the service: search and paging by 20 are done on it here (BR-185).
+  const [text, setText] = useState('');
+  const [page, setPage] = useState(0);
+  const [size, setSize] = useState(20);
   const [adjusting, setAdjusting] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const finished = month < clubMonth();
-  const anyClosed = (owners.state.data ?? []).some((o) => o.closed);
+  // What closing did or why it was refused stays here until dismissed, so the answer cannot be missed (BR-205).
+  const [outcome, setOutcome] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
+  const closing = useLoad(() => api.closingStatus(month), [month]);
+  const closingState = closing.state.data;
+  const ready = closingState?.state === 'READY';
 
   async function close() {
     setConfirming(false);
-    setError(null);
+    setOutcome(null);
     try {
       const r = await api.closeMonth(month);
-      notify.success(vi.billing.close.done.replace('{month}', r.month).replace('{count}', String(r.invoices)));
-      await owners.reload();
-      if (selected) await statement.reload();
+      const text =
+        r.invoices === 0
+          ? vi.billing.close.doneEmpty.replace('{month}', r.month)
+          : vi.billing.close.done.replace('{month}', r.month).replace('{count}', String(r.invoices)).replace('{total}', formatVnd(r.total));
+      notify.success(text);
+      setOutcome({ tone: 'success', text });
     } catch (err) {
-      setError(messageOf(err));
+      setOutcome({ tone: 'danger', text: messageOf(err) });
     }
+    await Promise.allSettled([owners.reload(), closing.reload(), selected ? statement.reload() : Promise.resolve()]);
   }
 
   const columns: DataColumn<StatementOwnerRow>[] = [
@@ -181,43 +227,96 @@ function StatementsTab({ month }: { month: string }) {
 
   return (
     <div className="grid gap-6">
-      {error && (
-        <Callout tone="danger" icon={CircleAlert} role="alert">
-          {error}
+      {outcome && (
+        <Callout tone={outcome.tone} icon={outcome.tone === 'success' ? CircleCheck : CircleAlert} role={outcome.tone === 'danger' ? 'alert' : 'status'}>
+          <div className="flex items-start justify-between gap-3">
+            <span>{outcome.text}</span>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setOutcome(null)} aria-label={vi.common.close}>
+              <X aria-hidden />
+            </Button>
+          </div>
         </Callout>
       )}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Button variant="outline" onClick={() => setAdjusting(true)}>
           {vi.billing.adjust.button}
         </Button>
-        <Button disabled={!finished || anyClosed} onClick={() => setConfirming(true)}>
+        <Button disabled={!ready} onClick={() => setConfirming(true)}>
           {vi.billing.close.button}
         </Button>
+        <ExportButton run={() => api.exportAllStatements(month)} label={vi.billing.exportAll} />
+        <p className="min-w-0 flex-1 text-sm text-muted-foreground" aria-live="polite">
+          {closing.state.status === 'error' && closingState === null
+            ? closing.state.error
+            : ready
+              ? vi.billing.close.ready.replace('{month}', month)
+              : closingState?.message}
+        </p>
       </div>
       <DataView
         load={owners}
         isEmpty={(list) => list.length === 0}
         empty={<EmptyState icon={Receipt} title={vi.billing.noOwners} />}
       >
-        {(list) => (
-          <>
-            <div className="grid gap-4 lg:grid-cols-2">
-              <MonthlyTrend
-                title={vi.billing.charts.trendClub}
-                fetchTotal={(m) => api.statementOwners(m).then((rows) => rows.reduce((sum, r) => sum + r.total, 0))}
-                deps={[]}
+        {(list) => {
+          const q = fold(text.trim());
+          const found = list.filter((o) => !q || fold(o.ownerName).includes(q));
+          const pages = Math.max(1, Math.ceil(found.length / size));
+          const at = Math.min(page, pages - 1);
+          const shown = { items: found.slice(at * size, at * size + size), page: at, size, total: found.length };
+          return (
+            <div className="grid gap-4">
+              <ListToolbar
+                query={text}
+                onQuery={(v) => {
+                  setText(v);
+                  setPage(0);
+                }}
+                placeholder={vi.billing.searchOwner}
+                total={found.length}
               />
-              <OwnerShare rows={list} month={month} />
+              {found.length === 0 ? (
+                <EmptyState icon={Receipt} title={vi.common.noResults} text={vi.common.noResultsHint} />
+              ) : (
+                <div className="grid gap-3">
+                  <DataTable caption={vi.billing.tabs.statements} data={shown.items} columns={columns} rowKey={(o) => o.ownerId} />
+                  <ListFooter
+                    data={shown}
+                    onPage={setPage}
+                    onSize={(n) => {
+                      setSize(n);
+                      setPage(0);
+                    }}
+                  />
+                </div>
+              )}
             </div>
-            <DataTable caption={vi.billing.tabs.statements} data={list} columns={columns} rowKey={(o) => o.ownerId} />
-          </>
-        )}
+          );
+        }}
       </DataView>
-      {selected && (
-        <Section title={selected.ownerName}>
-          <DataView load={statement}>{(s) => <StatementView statement={s} />}</DataView>
-        </Section>
-      )}
+      <Dialog open={selected !== null} onOpenChange={(open) => !open && setSelected(null)}>
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{selected ? vi.billing.statementOf(selected.ownerName) : ''}</DialogTitle>
+            <DialogDescription className="sr-only">{vi.billing.statementOf(selected?.ownerName ?? '')}</DialogDescription>
+          </DialogHeader>
+          {selected && (
+            <DataView load={statement}>
+              {(st) => (
+                <StatementView
+                  statement={st}
+                  actions={
+                    <>
+                      <ExportButton run={() => api.exportOwnerStatement(selected.ownerId, month)} />
+                      <PrintLink to={st.invoiceId ? `/billing/print/invoice/${st.invoiceId}` : `/billing/print/statement/${selected.ownerId}?month=${month}`} />
+                    </>
+                  }
+                />
+              )}
+            </DataView>
+          )}
+        </DialogContent>
+      </Dialog>
       <AdjustDialog
         open={adjusting}
         onClose={() => setAdjusting(false)}
@@ -243,9 +342,9 @@ function StatementsTab({ month }: { month: string }) {
 function History({ rows }: { rows: PriceRow[] }) {
   if (rows.length === 0) return <span className="text-muted-foreground">{vi.billing.prices.none}</span>;
   return (
-    <ul className="m-0 grid list-none gap-0.5 p-0 text-meta">
+    <ul className="m-0 grid min-w-0 list-none grid-cols-[minmax(0,1fr)] gap-0.5 p-0 text-meta">
       {rows.map((r) => (
-        <li key={r.id} className="tabular">
+        <li key={r.id} className="tabular whitespace-normal [overflow-wrap:anywhere]">
           {formatVnd(r.amount)} · {vi.billing.prices.from} {r.effectiveFrom}
         </li>
       ))}
@@ -254,6 +353,77 @@ function History({ rows }: { rows: PriceRow[] }) {
 }
 
 type PriceTarget = { kind: 'DAILY_FEE' | 'EXAM_FEE'; feeTypeId: number | null; title: string };
+
+/** A fee type is added with its first price: the name, the price and the day it starts, all required (BR-207, AC-452, AC-453). */
+function NewFeeTypeDialog({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
+  const p = vi.billing.prices;
+  const [name, setName] = useState('');
+  const [amount, setAmount] = useState('');
+  const [from, setFrom] = useState(today());
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const refused = collect({
+      name: required(name) ?? maxLength(name, LIMITS.feeTypeName),
+      amount: number(amount, { integer: true, ...BOUNDS.price, required: true }),
+      effectiveFrom: required(from) ?? date_(from),
+    });
+    setErrors(refused);
+    if (Object.keys(refused).length > 0) {
+      focusFirstInvalid(e.currentTarget as HTMLFormElement);
+      return;
+    }
+    setPending(true);
+    try {
+      await api.createFeeType(name, Number(amount), from);
+      notify.success(vi.common.saved);
+      setName('');
+      setAmount('');
+      setFrom(today());
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(messageOf(err));
+      setErrors(fieldsOf(err));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{p.newType}</DialogTitle>
+          <DialogDescription>{p.newTypeHint}</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} noValidate aria-label={p.newType} className="grid gap-4">
+          {error && (
+            <Callout tone="danger" icon={CircleAlert} role="alert">
+              {error}
+            </Callout>
+          )}
+          <FormField label={`${p.typeName} *`} error={errors.name}>
+            <Input maxLength={LIMITS.feeTypeName} value={name} onChange={(e) => setName(e.target.value)} />
+          </FormField>
+          <FormField label={`${p.amount} *`} error={errors.amount}>
+            <MoneyInput value={amount} onChange={setAmount} />
+          </FormField>
+          <FormField label={`${p.from} *`} error={errors.effectiveFrom}>
+            <DateInput min={today()} value={from} onChange={setFrom} />
+          </FormField>
+          <Button type="submit" loading={pending}>
+            {p.save}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function PriceDialog({ target, onClose, onSaved }: { target: PriceTarget | null; onClose: () => void; onSaved: () => void }) {
   const p = vi.billing.prices;
@@ -267,7 +437,15 @@ function PriceDialog({ target, onClose, onSaved }: { target: PriceTarget | null;
     e.preventDefault();
     if (!target) return;
     setError(null);
-    setErrors({});
+    const refused = collect({
+      amount: number(amount, { integer: true, ...BOUNDS.price, required: true }),
+      effectiveFrom: required(from) ?? date_(from),
+    });
+    setErrors(refused);
+    if (Object.keys(refused).length > 0) {
+      focusFirstInvalid(e.currentTarget as HTMLFormElement);
+      return;
+    }
     setPending(true);
     try {
       await api.setPrice(target.kind, target.feeTypeId, Number(amount), from);
@@ -297,10 +475,10 @@ function PriceDialog({ target, onClose, onSaved }: { target: PriceTarget | null;
             </Callout>
           )}
           <FormField label={`${p.amount} *`} error={errors.amount}>
-            <Input type="number" step="1" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            <MoneyInput value={amount} onChange={setAmount} />
           </FormField>
           <FormField label={`${p.from} *`} error={errors.effectiveFrom}>
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <DateInput value={from} onChange={setFrom} />
           </FormField>
           <Button type="submit" loading={pending}>
             {p.save}
@@ -316,25 +494,8 @@ function PricesTab() {
   const p = vi.billing.prices;
   const prices = useLoad(() => api.priceList(), []);
   const [target, setTarget] = useState<PriceTarget | null>(null);
-  const [name, setName] = useState('');
-  const [nameError, setNameError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-
-  async function addType(e: FormEvent) {
-    e.preventDefault();
-    setNameError(null);
-    setPending(true);
-    try {
-      await api.createFeeType(name);
-      setName('');
-      notify.success(vi.common.saved);
-      await prices.reload();
-    } catch (err) {
-      setNameError(messageOf(err));
-    } finally {
-      setPending(false);
-    }
-  }
+  const [adding, setAdding] = useState(false);
+  const [typeText, setTypeText] = useState('');
 
   async function deactivate(t: FeeTypeView) {
     try {
@@ -355,7 +516,7 @@ function PricesTab() {
       actions: true,
       cell: (t) =>
         t.active ? (
-          <span className="flex gap-2">
+          <span className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => setTarget({ kind: 'EXAM_FEE', feeTypeId: t.id, title: `${p.add}: ${t.name}` })}>
               {p.add}
             </Button>
@@ -385,16 +546,26 @@ function PricesTab() {
             </div>
           </Section>
           <Section title={p.examFees}>
-            <form onSubmit={addType} noValidate aria-label={p.newType} className="mb-4 flex max-w-xl flex-col gap-3 sm:flex-row sm:items-end">
-              <FormField label={p.typeName} error={nameError ?? undefined} className="flex-1">
-                <Input value={name} onChange={(e) => setName(e.target.value)} />
-              </FormField>
-              <Button type="submit" variant="outline" loading={pending}>
-                {p.newType}
-              </Button>
-            </form>
-            <DataTable caption={p.examFees} data={list.feeTypes} columns={columns} rowKey={(t) => t.id} />
+            <div className="mb-4">
+              <ListToolbar query={typeText} onQuery={setTypeText} placeholder={p.searchType}>
+                <Button variant="outline" onClick={() => setAdding(true)}>
+                  <Plus aria-hidden />
+                  {p.newType}
+                </Button>
+              </ListToolbar>
+            </div>
+            {list.feeTypes.filter((t) => !typeText.trim() || fold(t.name).includes(fold(typeText.trim()))).length === 0 ? (
+              <EmptyState icon={Receipt} title={p.noMatch} />
+            ) : (
+              <DataTable
+                caption={p.examFees}
+                data={list.feeTypes.filter((t) => !typeText.trim() || fold(t.name).includes(fold(typeText.trim())))}
+                columns={columns}
+                rowKey={(t) => t.id}
+              />
+            )}
           </Section>
+          <NewFeeTypeDialog open={adding} onClose={() => setAdding(false)} onSaved={() => void prices.reload()} />
           <PriceDialog target={target} onClose={() => setTarget(null)} onSaved={() => void prices.reload()} />
         </div>
       )}
@@ -417,9 +588,13 @@ function InvoicesTab({ month }: { month: string }) {
       header: vi.billing.view,
       actions: true,
       cell: (i) => (
-        <Button size="sm" variant="outline" onClick={() => setSelected(i)} aria-label={`${vi.billing.view} ${i.number}`}>
-          {vi.billing.view}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={() => setSelected(i)} aria-label={`${vi.billing.view} ${i.number}`}>
+            {vi.billing.view}
+          </Button>
+          <ExportButton run={() => api.exportInvoice(i.id)} ariaLabel={`${vi.billing.exportExcel} ${i.number}`} />
+          <PrintLink to={`/billing/print/invoice/${i.id}`} ariaLabel={`${vi.billing.print} ${i.number}`} />
+        </div>
       ),
     },
   ];
@@ -437,16 +612,35 @@ function InvoicesTab({ month }: { month: string }) {
           </>
         )}
       </DataView>
-      {selected && <DataView load={detail}>{(s) => <StatementView statement={s} />}</DataView>}
+      <Dialog open={selected !== null} onOpenChange={(open) => !open && setSelected(null)}>
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{selected ? `${vi.billing.invoice} ${selected.number}` : ''}</DialogTitle>
+            <DialogDescription className="sr-only">{selected ? `${vi.billing.invoice} ${selected.number}` : ''}</DialogDescription>
+          </DialogHeader>
+          {selected && <DataView load={detail}>{(s) => <StatementView statement={s} />}</DataView>}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-type Tab = 'statements' | 'prices' | 'invoices';
+/** Only charts: the same four cards for a chosen month and for all months together (BR-180, BR-209). */
+function OverviewTab({ month }: { month: string }) {
+  const overview = useLoad(() => api.billingOverview(month), [month]);
+  return (
+    <DataView load={overview} skeleton={<Skeleton className="h-[34rem]" />}>
+      {(o) => <OverviewCharts overview={o} />}
+    </DataView>
+  );
+}
 
-/** The Club Manager's side: statements per owner, the price list, closed invoices. */
+type Tab = 'overview' | 'statements' | 'prices' | 'invoices';
+const TABS = ['overview', 'statements', 'prices', 'invoices'] as const;
+
+/** The Club Manager's side: the overview, statements per owner, the price list, closed invoices. */
 function ManagerView() {
-  const [tab, setTab] = useState<Tab>('statements');
+  const [tab, setTab] = useTabParam<Tab>(TABS);
   const [month, setMonth] = useState(clubMonth(-1));
   return (
     <div className="grid gap-6">
@@ -455,12 +649,14 @@ function ManagerView() {
         value={tab}
         onChange={setTab}
         options={[
+          { value: 'overview', label: vi.billing.tabs.overview },
           { value: 'statements', label: vi.billing.tabs.statements },
           { value: 'prices', label: vi.billing.tabs.prices },
           { value: 'invoices', label: vi.billing.tabs.invoices },
         ]}
       />
-      {tab !== 'prices' && <MonthSelect value={month} onChange={setMonth} />}
+      {tab !== 'prices' && <MonthSelect value={month} onChange={setMonth} allowAll={tab === 'overview'} />}
+      {tab === 'overview' && <OverviewTab month={month} />}
       {tab === 'statements' && <StatementsTab key={month} month={month} />}
       {tab === 'prices' && <PricesTab />}
       {tab === 'invoices' && <InvoicesTab key={month} month={month} />}

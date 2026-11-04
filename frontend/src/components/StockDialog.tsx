@@ -12,6 +12,10 @@ import { PagerBar } from './PagerBar';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { FormField } from './ui/form-field';
 import { Input } from './ui/input';
+import { DateInput, NumberInput } from './ui/typed-inputs';
+import { MoneyInput } from './ui/money-input';
+import { LIMITS } from '../lib/limits';
+import { BOUNDS, date as dateCheck, number } from '../lib/validate';
 import { Select } from './ui/select';
 import { Callout } from './ui/states';
 
@@ -106,6 +110,7 @@ export function StockDialog({ item, onClose, onChanged }: { item: SupplyItem | n
     e.preventDefault();
     const errors: Record<string, string> = {};
     if (!isWhole(quantity, 1)) errors.quantity = s.receiptQuantityInvalid;
+    else if (number(quantity, BOUNDS.quantity)) errors.quantity = number(quantity, BOUNDS.quantity)!;
     void run(errors, () => api.receiveStock(item!.id, Number(quantity), note.trim(), expectedId ?? undefined), () => {
       setQuantity('');
       setNote('');
@@ -117,6 +122,7 @@ export function StockDialog({ item, onClose, onChanged }: { item: SupplyItem | n
     e.preventDefault();
     const errors: Record<string, string> = {};
     if (!isWhole(quantity, 0)) errors.newQuantity = s.adjustQuantityInvalid;
+    else if (number(quantity, BOUNDS.stock)) errors.newQuantity = number(quantity, BOUNDS.stock)!;
     if (note.trim() === '') errors.reason = s.reasonRequired;
     void run(errors, () => api.adjustStock(item!.id, Number(quantity), note.trim()), () => {
       setQuantity('');
@@ -135,7 +141,9 @@ export function StockDialog({ item, onClose, onChanged }: { item: SupplyItem | n
     e.preventDefault();
     const errors: Record<string, string> = {};
     if (!date) errors.expectedDate = s.dateRequired;
+    else if (dateCheck(date)) errors.expectedDate = dateCheck(date)!;
     if (!isWhole(quantity, 1)) errors.quantity = s.receiptQuantityInvalid;
+    else if (number(quantity, BOUNDS.quantity)) errors.quantity = number(quantity, BOUNDS.quantity)!;
     void run(errors, () => api.expectReceipt(item!.id, date, Number(quantity)), () => {
       setDate('');
       setQuantity('');
@@ -179,7 +187,7 @@ export function StockDialog({ item, onClose, onChanged }: { item: SupplyItem | n
             {tab === 'receipt' && (
               <form className="grid gap-4" noValidate onSubmit={receive}>
                 <FormField label={s.receiptQuantity(item.unit)} error={fieldErrors.quantity} className="sm:max-w-64">
-                  <Input type="number" inputMode="numeric" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                  <NumberInput integer {...BOUNDS.quantity} unit={item.unit} unitInLabel value={quantity} onChange={setQuantity} />
                 </FormField>
                 {expected.length > 0 && (
                   <FormField label={s.fulfils} description={s.fulfilsHint}>
@@ -197,7 +205,7 @@ export function StockDialog({ item, onClose, onChanged }: { item: SupplyItem | n
                   </FormField>
                 )}
                 <FormField label={s.note} error={fieldErrors.note}>
-                  <Input value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
+                  <Input maxLength={LIMITS.longText} value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
                 </FormField>
                 <div>
                   <Button type="submit" loading={pending}>
@@ -210,10 +218,10 @@ export function StockDialog({ item, onClose, onChanged }: { item: SupplyItem | n
             {tab === 'adjust' && (
               <form className="grid gap-4" noValidate onSubmit={adjust}>
                 <FormField label={s.adjustQuantity(item.unit)} description={s.adjustHint} error={fieldErrors.newQuantity} className="sm:max-w-64">
-                  <Input type="number" inputMode="numeric" min={0} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                  <NumberInput integer {...BOUNDS.stock} unit={item.unit} unitInLabel value={quantity} onChange={setQuantity} />
                 </FormField>
                 <FormField label={s.reason} error={fieldErrors.reason}>
-                  <Input value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
+                  <Input maxLength={LIMITS.longText} value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
                 </FormField>
                 <div>
                   <Button type="submit" loading={pending}>
@@ -226,7 +234,7 @@ export function StockDialog({ item, onClose, onChanged }: { item: SupplyItem | n
             {tab === 'price' && (
               <form className="grid gap-4" noValidate onSubmit={savePrice}>
                 <FormField label={s.price} description={s.priceHint} error={fieldErrors.price} className="sm:max-w-64">
-                  <Input type="number" inputMode="decimal" min={0} step="any" value={price} onChange={(e) => setPrice(e.target.value)} />
+                  <MoneyInput value={price} onChange={setPrice} />
                 </FormField>
                 <div>
                   <Button type="submit" loading={pending}>
@@ -240,10 +248,10 @@ export function StockDialog({ item, onClose, onChanged }: { item: SupplyItem | n
               <div className="grid gap-4">
                 <form className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end" noValidate onSubmit={expect}>
                   <FormField label={s.expectedDate} error={fieldErrors.expectedDate}>
-                    <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                    <DateInput value={date} onChange={setDate} />
                   </FormField>
                   <FormField label={s.receiptQuantity(item.unit)} error={fieldErrors.quantity}>
-                    <Input type="number" inputMode="numeric" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                    <NumberInput integer {...BOUNDS.quantity} unit={item.unit} unitInLabel value={quantity} onChange={setQuantity} />
                   </FormField>
                   <Button type="submit" loading={pending}>
                     {s.addExpected}

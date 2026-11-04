@@ -106,6 +106,30 @@ describe('ration page (REQ-018)', () => {
     expect(await within(form).findByText('Số lượng phải là số lớn hơn 0.')).toBeInTheDocument();
   });
 
+  test('an empty meal names every field at once and nothing is sent', async () => {
+    vitest.mocked(api.ration).mockResolvedValue({ ...base, current: null, history: [] });
+    renderAs('VETERINARIAN', <RationPage />, '/horses/:id/ration', '/horses/9/ration');
+    const form = await screen.findByRole('form', { name: 'Soạn khẩu phần' });
+    await userEvent.click(within(form).getByRole('button', { name: 'Lưu khẩu phần' }));
+    expect(within(form).getByLabelText('Tên bữa')).toHaveAccessibleDescription('Bắt buộc nhập tên bữa.');
+    expect(within(form).getByLabelText('Giờ ăn')).toHaveAccessibleDescription('Giờ ăn không hợp lệ (HH:mm).');
+    expect(within(form).getByLabelText('Loại 1.1')).toHaveAttribute('aria-invalid', 'true');
+    expect(within(form).getByLabelText('Số lượng 1.1')).toHaveAccessibleDescription('Bắt buộc nhập.');
+    expect(api.saveRation).not.toHaveBeenCalled();
+  });
+
+  test('a zero or negative quantity is refused on the field and carries the unit of the supply item', async () => {
+    renderAs('VETERINARIAN', <RationPage />, '/horses/:id/ration', '/horses/9/ration');
+    const form = await screen.findByRole('form', { name: 'Soạn khẩu phần' });
+    const qty = within(form).getByLabelText('Số lượng 1.1');
+    expect(qty).toHaveAttribute('data-unit', 'kg');
+    await userEvent.clear(qty);
+    await userEvent.type(qty, '0');
+    await userEvent.click(within(form).getByRole('button', { name: 'Lưu khẩu phần' }));
+    expect(qty).toHaveAccessibleDescription('Giá trị phải lớn hơn 0.');
+    expect(api.saveRation).not.toHaveBeenCalled();
+  });
+
   test('AC-253 an archived horse shows the ration read-only for the Veterinarian too', async () => {
     vitest.mocked(api.ration).mockResolvedValue({ ...base, archived: true });
     renderAs('VETERINARIAN', <RationPage />, '/horses/:id/ration', '/horses/9/ration');

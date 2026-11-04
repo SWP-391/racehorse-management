@@ -17,6 +17,9 @@ import { DataView } from '../components/ui/data-view';
 import { Badge, PageHeader } from '../components/ui/display';
 import { FormField } from '../components/ui/form-field';
 import { Input } from '../components/ui/input';
+import { NumberInput, TimeInput } from '../components/ui/typed-inputs';
+import { LIMITS } from '../lib/limits';
+import { BOUNDS, blank, collect, focusFirstInvalid, maxLength, number, type Check } from '../lib/validate';
 import { Select } from '../components/ui/select';
 import { SearchSelect } from '../components/ui/search-select';
 import { Callout, EmptyState } from '../components/ui/states';
@@ -97,7 +100,35 @@ function Editor({
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    setFields({});
+    // The service's rules (RationService.validate), named on every field at once before anything is sent (BR-138, BR-139).
+    const checks: Record<string, Check> = {};
+    const seen = new Set<string>();
+    meals.forEach((m, i) => {
+      const at = `meals[${i}]`;
+      const key = m.name.trim().toLowerCase();
+      checks[`${at}.name`] = blank(m.name)
+        ? 'Bắt buộc nhập tên bữa.'
+        : seen.has(key)
+          ? `Tên bữa "${m.name.trim()}" bị trùng trong khẩu phần.`
+          : maxLength(m.name, LIMITS.mealName);
+      seen.add(key);
+      checks[`${at}.time`] = blank(m.time) || !/^\d{1,2}:\d{2}$/.test(m.time.trim()) ? 'Giờ ăn không hợp lệ (HH:mm).' : null;
+      const used = new Set<number>();
+      m.items.forEach((it, j) => {
+        const item = `${at}.items[${j}]`;
+        checks[`${item}.type`] = blank(it.type) ? 'Chọn loại thành phần (Ngũ cốc, Cỏ hoặc Vitamin).' : null;
+        checks[`${item}.supplyItemId`] =
+          it.supplyItemId === null ? 'Vật tư không tồn tại.' : used.has(it.supplyItemId) ? 'Vật tư bị trùng trong bữa.' : null;
+        if (it.supplyItemId !== null) used.add(it.supplyItemId);
+        checks[`${item}.quantity`] = number(it.quantity, { positive: true, max: BOUNDS.quantity.max, required: true });
+      });
+    });
+    const refused = collect(checks);
+    setFields(refused);
+    if (Object.keys(refused).length > 0) {
+      focusFirstInvalid(e.currentTarget as HTMLFormElement);
+      return;
+    }
     setPending(true);
     try {
       onSaved(await api.saveRation(horseId, meals));
@@ -123,10 +154,10 @@ function Editor({
           <legend className="px-1 font-display text-lg font-medium">{`${vi.ration.meal} ${i + 1}`}</legend>
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField label={vi.ration.mealName} error={fields[`meals[${i}].name`]}>
-              <Input value={m.name} onChange={(e) => patchMeal(i, { name: e.target.value })} />
+              <Input maxLength={LIMITS.mealName} value={m.name} onChange={(e) => patchMeal(i, { name: e.target.value })} />
             </FormField>
             <FormField label={vi.ration.mealTime} error={fields[`meals[${i}].time`]}>
-              <Input type="time" value={m.time} onChange={(e) => patchMeal(i, { time: e.target.value })} />
+              <TimeInput value={m.time} onChange={(v) => patchMeal(i, { time: v })} />
             </FormField>
           </div>
           {fields[`meals[${i}].items`] && (
@@ -171,11 +202,15 @@ function Editor({
                   label={`${vi.ration.quantity} ${j + 1}${unit ? ` (${unit})` : ''}`}
                   error={fields[`${at}.quantity`]}
                 >
-                  <Input
-                    inputMode="decimal"
+                  <NumberInput
+                    min={0}
+                    max={BOUNDS.quantity.max}
+                    step="any"
+                    unit={unit ?? 'đơn vị'}
+                    unitInLabel
                     aria-label={`${vi.ration.quantity} ${i + 1}.${j + 1}`}
                     value={it.quantity}
-                    onChange={(e) => patchItem(i, j, { quantity: e.target.value })}
+                    onChange={(v) => patchItem(i, j, { quantity: v })}
                   />
                 </FormField>
                 <Button

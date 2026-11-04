@@ -12,6 +12,8 @@ import { useAuth } from '../auth/AuthContext';
 import { fieldsOf, messageOf } from '../components/ErrorText';
 import { vi } from '../i18n/vi';
 import { usePagedList } from '../hooks/usePagedList';
+import { useTabParam } from '../hooks/useTabParam';
+import { FilterTabs } from '../components/ui/tabs';
 import { notify } from '../lib/notify';
 import { Button } from '../components/ui/button';
 import { ConfirmButton } from '../components/ui/confirm-button';
@@ -22,22 +24,28 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Badge, PageHeader, Section } from '../components/ui/display';
 import { FormField } from '../components/ui/form-field';
 import { Input } from '../components/ui/input';
+import { NumberInput } from '../components/ui/typed-inputs';
+import { MoneyInput } from '../components/ui/money-input';
+import { LIMITS } from '../lib/limits';
+import { BOUNDS, maxLength, number } from '../lib/validate';
+import { useLoad } from '../hooks/useLoad';
 import { ListFooter, ListToolbar } from '../components/ui/list-toolbar';
 import { Select } from '../components/ui/select';
 import { Callout, EmptyState } from '../components/ui/states';
 import { clubDateTime } from '../lib/utils';
 import { StockDialog } from '../components/StockDialog';
+import { SupplyUnitsSection } from '../components/SupplyUnitsSection';
 
 type ItemForm = {
   id: number | null;
   name: string;
   category: SupplyCategory | '';
-  unit: string;
+  unitId: number | '';
   price: string;
   openingQuantity: string;
   active: boolean;
 };
-const NEW_ITEM: ItemForm = { id: null, name: '', category: '', unit: '', price: '', openingQuantity: '', active: true };
+const NEW_ITEM: ItemForm = { id: null, name: '', category: '', unitId: '', price: '', openingQuantity: '', active: true };
 
 const isWhole = (v: string, min: number) => /^\d+$/.test(v.trim()) && Number(v) >= min;
 const money = (n: number) => new Intl.NumberFormat('vi-VN').format(n);
@@ -69,6 +77,8 @@ function ActiveBadge({ active }: { active: boolean }) {
  * Supplies (BR-130 to BR-132). Club Manager: catalog (add, edit, deactivate) and pending proposals (approve, or reject
  * with a reason). Groom: active items with "Đề xuất bổ sung" and their own proposals with the state and reject reason.
  */
+type SuppliesTab = 'items' | 'pending' | 'units' | 'mine';
+
 export default function SuppliesPage() {
   const { can } = useAuth();
   const allowed = can('VIEW_SUPPLIES');
@@ -81,6 +91,8 @@ export default function SuppliesPage() {
   const pending = usePagedList((query) => api.proposals(query), { prefix: 'p', fixed: { state: 'PENDING' }, enabled: allowed && decide });
   const proposals = usePagedList((query) => api.proposals(query), { prefix: 'm', enabled: allowed && propose });
 
+  const units = useLoad(() => api.supplyUnits(), [], manage);
+  const unitList = units.state.data ?? [];
   const [item, setItem] = useState<ItemForm | null>(null);
   const [proposing, setProposing] = useState<SupplyItem | null>(null);
   const [stockingId, setStockingId] = useState<number | null>(null);
@@ -133,16 +145,25 @@ export default function SuppliesPage() {
     if (!item) return;
     const errors: Record<string, string> = {};
     if (item.name.trim() === '') errors.name = vi.supplies.nameRequired;
+    else if (maxLength(item.name, LIMITS.supplyName)) errors.name = maxLength(item.name, LIMITS.supplyName)!;
     if (item.category === '') errors.category = vi.supplies.categoryRequired;
-    if (item.unit.trim() === '') errors.unit = vi.supplies.unitRequired;
+    if (item.unitId === '') errors.unitId = vi.supplies.unitRequired;
+    else if (!unitList.some((u) => u.id === item.unitId)) errors.unitId = vi.supplies.units.noneActive;
     if (item.id === null) {
-      if (item.price.trim() === '' || Number.isNaN(Number(item.price)) || Number(item.price) < 0) errors.price = vi.supplies.priceRequired;
-      if (item.openingQuantity.trim() !== '' && !isWhole(item.openingQuantity, 0)) errors.openingQuantity = vi.supplies.quantityInvalid;
+      if (item.price.trim() === '') errors.price = vi.supplies.priceRequired;
+      else {
+        const price = number(item.price, BOUNDS.price);
+        if (price) errors.price = price;
+      }
+      if (item.openingQuantity.trim() !== '') {
+        const stock = !isWhole(item.openingQuantity, 0) ? vi.supplies.quantityInvalid : number(item.openingQuantity, BOUNDS.stock);
+        if (stock) errors.openingQuantity = stock;
+      }
     }
     const input = {
       name: item.name.trim(),
       category: item.category,
-      unit: item.unit.trim(),
+      unitId: item.unitId,
       active: item.active,
       ...(item.id === null
         ? { price: Number(item.price), openingQuantity: item.openingQuantity.trim() === '' ? 0 : Number(item.openingQuantity) }
@@ -160,6 +181,9 @@ export default function SuppliesPage() {
     if (!proposing) return;
     const errors: Record<string, string> = {};
     if (!isWhole(quantity, 1)) errors.quantity = vi.supplies.proposeQuantityInvalid;
+    else if (number(quantity, BOUNDS.quantity)) errors.quantity = number(quantity, BOUNDS.quantity)!;
+    const noteTooLong = maxLength(note, LIMITS.longText);
+    if (noteTooLong) errors.note = noteTooLong;
     void submit(
       errors,
       () => api.proposeRestock(proposing.id, Number(quantity), note.trim()),
@@ -172,6 +196,7 @@ export default function SuppliesPage() {
     if (!rejecting) return;
     const errors: Record<string, string> = {};
     if (reason.trim() === '') errors.reason = vi.supplies.reasonRequired;
+    else if (maxLength(reason, LIMITS.longText)) errors.reason = maxLength(reason, LIMITS.longText)!;
     void submit(
       errors,
       () => api.rejectProposal(rejecting.id, reason.trim()),
@@ -194,7 +219,7 @@ export default function SuppliesPage() {
 
   const toggleActive = (i: SupplyItem) =>
     act(`item:${i.id}`, () =>
-      api.updateSupply(i.id, { name: i.name, category: i.category, unit: i.unit, active: !i.active }),
+      api.updateSupply(i.id, { name: i.name, category: i.category, unitId: i.unitId, active: !i.active }),
     );
 
   const nameCell = (name: string) => <span className="font-display text-[1.0625rem] font-medium text-foreground">{name}</span>;
@@ -240,7 +265,7 @@ export default function SuppliesPage() {
             aria-label={vi.supplies.editOf(i.name)}
             onClick={() => {
               resetErrors();
-              setItem({ id: i.id, name: i.name, category: i.category, unit: i.unit, price: '', openingQuantity: '', active: i.active });
+              setItem({ id: i.id, name: i.name, category: i.category, unitId: i.unitId, price: '', openingQuantity: '', active: i.active });
             }}
           >
             <PencilLine aria-hidden />
@@ -363,6 +388,15 @@ export default function SuppliesPage() {
     </Callout>
   );
 
+  // Each kind of data has its own tab, so nobody scrolls past one table to reach another (BR-209, DEC-069).
+  const tabValues = ['items', ...(decide ? ['pending'] : []), ...(manage ? ['units'] : []), ...(propose ? ['mine'] : [])] as const;
+  const [tab, setTab] = useTabParam(tabValues as readonly SuppliesTab[]);
+  const tabOptions = tabValues.map((value) => ({
+    value: value as SuppliesTab,
+    label: value === 'items' ? (manage ? vi.supplies.tabs.catalog : vi.supplies.tabs.inUse) : vi.supplies.tabs[value as 'pending' | 'units' | 'mine'],
+    count: value === 'pending' ? pending.load.state.data?.total : undefined,
+  }));
+
   return (
     <>
       <PageHeader
@@ -382,8 +416,15 @@ export default function SuppliesPage() {
           ) : undefined
         }
       />
+      <FilterTabs
+        label={vi.supplies.tabs.label}
+        value={tab}
+        onChange={setTab}
+        className="mb-6"
+        options={tabOptions}
+      />
       <div className="grid gap-10">
-        {decide && (
+        {decide && tab === 'pending' && (
           <Section title={vi.supplies.pending}>
             <DataView
               load={pending.load}
@@ -400,6 +441,7 @@ export default function SuppliesPage() {
           </Section>
         )}
 
+        {tab === 'items' && (
         <Section title={manage ? vi.supplies.catalog : vi.supplies.items}>
           <div className="mb-4">
             <ListToolbar query={items.query} onQuery={items.setQuery} placeholder={vi.supplies.searchPlaceholder} total={items.load.state.data?.total}>
@@ -447,8 +489,11 @@ export default function SuppliesPage() {
             )}
           </DataView>
         </Section>
+        )}
 
-        {propose && (
+        {manage && tab === 'units' && <SupplyUnitsSection units={units} onChanged={() => void items.load.reload()} />}
+
+        {propose && tab === 'mine' && (
           <Section title={vi.supplies.mine} description={vi.supplies.mineNote}>
             <DataView
               load={proposals.load}
@@ -476,7 +521,7 @@ export default function SuppliesPage() {
               </DialogHeader>
               {errorCallout}
               <FormField label={vi.supplies.name} error={fieldErrors.name}>
-                <Input value={item.name} onChange={(e) => setItem({ ...item, name: e.target.value })} autoComplete="off" />
+                <Input maxLength={LIMITS.supplyName} value={item.name} onChange={(e) => setItem({ ...item, name: e.target.value })} autoComplete="off" />
               </FormField>
               <div className="grid gap-4 sm:grid-cols-2">
                 <FormField label={vi.supplies.category} error={fieldErrors.category}>
@@ -489,29 +534,35 @@ export default function SuppliesPage() {
                     ))}
                   </Select>
                 </FormField>
-                <FormField label={vi.supplies.unit} error={fieldErrors.unit}>
-                  <Input value={item.unit} onChange={(e) => setItem({ ...item, unit: e.target.value })} autoComplete="off" />
+                <FormField
+                  label={vi.supplies.unit}
+                  error={fieldErrors.unitId}
+                  description={unitList.length > 0 && unitList.every((u) => !u.active) ? vi.supplies.units.noneActive : undefined}
+                >
+                  <Select value={item.unitId} onChange={(e) => setItem({ ...item, unitId: e.target.value === '' ? '' : Number(e.target.value) })}>
+                    <option value="">{vi.supplies.chooseUnit}</option>
+                    {unitList
+                      .filter((u) => u.active || u.id === item.unitId)
+                      .map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.active ? u.name : `${u.name} (${vi.supplies.units.keptInactive})`}
+                        </option>
+                      ))}
+                  </Select>
                 </FormField>
               </div>
               {item.id === null ? (
                 <div className="grid gap-4 sm:grid-cols-2">
                   <FormField label={vi.supplies.price} description={vi.supplies.priceHint} error={fieldErrors.price}>
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      min={0}
-                      step="any"
-                      value={item.price}
-                      onChange={(e) => setItem({ ...item, price: e.target.value })}
-                    />
+                    <MoneyInput value={item.price} onChange={(v) => setItem({ ...item, price: v })} />
                   </FormField>
                   <FormField label={vi.supplies.openingQuantity} description={vi.supplies.openingHint} error={fieldErrors.openingQuantity}>
-                    <Input
-                      type="number"
-                      inputMode="numeric"
-                      min={0}
+                    <NumberInput
+                      integer
+                      {...BOUNDS.stock}
+                      unit={unitList.find((u) => u.id === item.unitId)?.name || 'đơn vị'}
                       value={item.openingQuantity}
-                      onChange={(e) => setItem({ ...item, openingQuantity: e.target.value })}
+                      onChange={(v) => setItem({ ...item, openingQuantity: v })}
                     />
                   </FormField>
                 </div>
@@ -547,10 +598,10 @@ export default function SuppliesPage() {
               </DialogHeader>
               {errorCallout}
               <FormField label={vi.supplies.proposeQuantity(proposing.unit)} error={fieldErrors.quantity} className="sm:max-w-64">
-                <Input type="number" inputMode="numeric" min={1} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                <NumberInput integer {...BOUNDS.quantity} unit={proposing.unit} unitInLabel value={quantity} onChange={setQuantity} />
               </FormField>
               <FormField label={vi.supplies.note} error={fieldErrors.note}>
-                <Input value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
+                <Input maxLength={LIMITS.longText} value={note} onChange={(e) => setNote(e.target.value)} autoComplete="off" />
               </FormField>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setProposing(null)}>

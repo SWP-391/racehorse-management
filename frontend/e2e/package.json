@@ -1,0 +1,9 @@
+{
+  "name": "racehorse-e2e",
+  "private": true,
+  "description": "End-to-end smoke tests. Run with scripts/e2e.sh (Playwright runs in its own container).",
+  "devDependencies": {
+    "@playwright/test": "1.48.2",
+    "@axe-core/playwright": "4.13.0"
+  }
+}

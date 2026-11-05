@@ -53,8 +53,24 @@ describe('account administration (task 7.2, BR-090)', () => {
     await userEvent.type(screen.getByLabelText(/^Tên đăng nhập/), 'new');
     await userEvent.type(screen.getByLabelText(/^Họ tên/), 'Người mới');
     await userEvent.type(screen.getByLabelText(/^Mật khẩu/), 'password-123');
+    await userEvent.selectOptions(screen.getByLabelText(/^Vai trò/), 'HEAD_TRAINER');
     await userEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Mỗi người chỉ có một vai trò.');
+    expect((await screen.findAllByText('Mỗi người chỉ có một vai trò.')).length).toBeGreaterThan(0);
+  });
+
+  test('an empty form names every field, a short password is refused and nothing is sent', async () => {
+    vitest.mocked(api.createAccount).mockClear();
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    await userEvent.type(screen.getByLabelText(/^Mật khẩu/), 'short');
+    await userEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
+    expect(screen.getByLabelText(/^Tên đăng nhập/)).toHaveAccessibleDescription('Bắt buộc nhập.');
+    expect(screen.getByLabelText(/^Họ tên/)).toHaveAccessibleDescription('Bắt buộc nhập.');
+    expect(screen.getByLabelText(/^Mật khẩu/)).toHaveAccessibleDescription('Mật khẩu cần 8 ký tự trở lên.');
+    expect(screen.getByLabelText(/^Vai trò/)).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText(/^Tên đăng nhập/)).toHaveFocus();
+    expect(screen.getByLabelText(/^Tên đăng nhập/)).toHaveAttribute('maxlength', '100');
+    expect(screen.getByLabelText(/^Họ tên/)).toHaveAttribute('maxlength', '200');
+    expect(api.createAccount).not.toHaveBeenCalled();
   });
 
   test('deactivate calls the service for that account', async () => {

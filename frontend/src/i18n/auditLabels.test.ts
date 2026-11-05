@@ -4,7 +4,7 @@ import { vi } from './vi';
 
 // The audit search runs on the server and must match the text the screen shows (BR-093), so the service keeps a copy of
 // these two tables. This test fails when one side changes without the other.
-const sources = import.meta.glob('../../../backend/src/main/java/vn/racehorse/audit/AuditActionLabels.java', {
+const sources = import.meta.glob('../../../backend/src/main/java/vn/racehorse/audit/service/AuditActionLabels.java', {
   query: '?raw',
   import: 'default',
   eager: true,

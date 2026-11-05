@@ -10,7 +10,8 @@ import { DataTable, type DataColumn } from '../components/ui/data-table';
 import { DataView } from '../components/ui/data-view';
 import { PageHeader } from '../components/ui/display';
 import { FormField } from '../components/ui/form-field';
-import { Input } from '../components/ui/input';
+import { DateInput } from '../components/ui/typed-inputs';
+import { dateRange, focusFirstInvalid, today } from '../lib/validate';
 import { ListFooter, ListToolbar } from '../components/ui/list-toolbar';
 import { SearchSelect, type Chosen } from '../components/ui/search-select';
 import { EmptyState } from '../components/ui/states';
@@ -100,8 +101,14 @@ export default function AuditPage() {
     );
   }
 
+  const rangeError = dateRange(draft.from, draft.to);
+
   function submit(e: FormEvent) {
     e.preventDefault();
+    if (rangeError) {
+      focusFirstInvalid(e.currentTarget as HTMLFormElement);
+      return;
+    }
     list.setFilters({ from: draft.from, to: draft.to });
   }
 
@@ -137,10 +144,10 @@ export default function AuditPage() {
         className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-[repeat(3,minmax(0,1fr))_auto] lg:items-end"
       >
         <FormField label={vi.audit.from}>
-          <Input type="date" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
+          <DateInput max={draft.to || today()} value={draft.from} onChange={(v) => setDraft({ ...draft, from: v })} />
         </FormField>
-        <FormField label={vi.audit.to}>
-          <Input type="date" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
+        <FormField label={vi.audit.to} error={rangeError}>
+          <DateInput min={draft.from || undefined} max={today()} value={draft.to} onChange={(v) => setDraft({ ...draft, to: v })} />
         </FormField>
         <FormField label={vi.audit.actor}>
           <SearchSelect

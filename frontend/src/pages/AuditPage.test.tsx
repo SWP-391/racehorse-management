@@ -47,7 +47,7 @@ describe('audit log screen (task 7.3, BR-093)', () => {
     renderAs('CLUB_MANAGER', <AuditPage />);
     await screen.findByText('HORSE_UPDATED');
     // Only controls that filter or page the log; no row has an edit or a delete (AC-026).
-    const buttons = screen.getAllByRole('button').map((b) => b.textContent);
+    const buttons = screen.getAllByRole('button', { name: (n) => n !== 'Mở lịch' }).map((b) => b.textContent);
     expect(buttons).toEqual(['Lọc']);
   });
 
@@ -95,5 +95,19 @@ describe('readable details (critic round 3)', () => {
     renderAs('CLUB_MANAGER', <AuditPage />);
     expect(await screen.findByText('Khớp cổ chân trước trái')).toBeInTheDocument();
     expect(screen.queryByText('LF_FETLOCK')).not.toBeInTheDocument();
+  });
+});
+
+describe('audit date range (input-validation)', () => {
+  test('an end date before the start is refused on the end field and no filter is applied', async () => {
+    vitest.mocked(api.audit).mockClear();
+    renderAs('CLUB_MANAGER', <AuditPage />);
+    await userEvent.type(await screen.findByLabelText('Từ ngày'), '2026-10-10');
+    const to = screen.getByLabelText('Đến ngày');
+    await userEvent.type(to, '2026-10-01');
+    expect(to).toHaveAccessibleDescription('Ngày kết thúc không được trước ngày bắt đầu.');
+    const calls = vitest.mocked(api.audit).mock.calls.length;
+    await userEvent.click(screen.getByRole('button', { name: 'Lọc' }));
+    expect(vitest.mocked(api.audit).mock.calls.length).toBe(calls);
   });
 });

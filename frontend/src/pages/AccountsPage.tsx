@@ -17,6 +17,8 @@ import { DataView } from '../components/ui/data-view';
 import { Badge, PageHeader, Section } from '../components/ui/display';
 import { FormField } from '../components/ui/form-field';
 import { Input } from '../components/ui/input';
+import { LIMITS } from '../lib/limits';
+import { blank, collect, focusFirstInvalid, maxLength, required } from '../lib/validate';
 import { ListFooter, ListToolbar } from '../components/ui/list-toolbar';
 import { Select } from '../components/ui/select';
 import { Callout, EmptyState } from '../components/ui/states';
@@ -59,7 +61,18 @@ export default function AccountsPage() {
   async function create(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    setFieldErrors({});
+    // The service's rules for an account (AccountController.CreateRequest), said on the fields before sending.
+    const refused = collect({
+      username: required(form.username) ?? maxLength(form.username, LIMITS.username),
+      displayName: required(form.displayName) ?? maxLength(form.displayName, LIMITS.displayName),
+      password: required(form.password) ?? (form.password.length < 8 ? 'Mật khẩu cần 8 ký tự trở lên.' : maxLength(form.password, 100)),
+      roles: blank(form.role) ? 'Bắt buộc chọn vai trò.' : null,
+    });
+    setFieldErrors(refused);
+    if (Object.keys(refused).length > 0) {
+      focusFirstInvalid(e.currentTarget as HTMLFormElement);
+      return;
+    }
     setPending(true);
     try {
       await api.createAccount({
@@ -214,13 +227,13 @@ export default function AccountsPage() {
           <form onSubmit={create} noValidate aria-label={vi.accounts.create} className="grid max-w-3xl gap-5">
             <div className="grid gap-5 md:grid-cols-2">
               <FormField label={vi.accounts.username} error={fieldErrors.username}>
-                <Input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+                <Input maxLength={LIMITS.username} autoComplete="off" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
               </FormField>
               <FormField label={vi.accounts.displayName} error={fieldErrors.displayName}>
-                <Input value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
+                <Input maxLength={LIMITS.displayName} value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
               </FormField>
               <FormField label={vi.accounts.password} error={fieldErrors.password}>
-                <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+                <Input type="password" maxLength={100} autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
               </FormField>
               {/* A single select: one role per person (BR-090). */}
               <FormField label={vi.accounts.role} description={vi.accounts.oneRoleOnly} error={fieldErrors.roles}>

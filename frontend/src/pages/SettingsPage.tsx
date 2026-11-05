@@ -10,7 +10,8 @@ import { Button } from '../components/ui/button';
 import { DataView } from '../components/ui/data-view';
 import { PageHeader, Section } from '../components/ui/display';
 import { FormField } from '../components/ui/form-field';
-import { Input } from '../components/ui/input';
+import { NumberInput } from '../components/ui/typed-inputs';
+import { BOUNDS, focusFirstInvalid, number } from '../lib/validate';
 import { Callout, DetailSkeleton, EmptyState } from '../components/ui/states';
 
 interface NumberSettingProps {
@@ -18,7 +19,9 @@ interface NumberSettingProps {
   description: string;
   label: string;
   value: number;
-  step?: string;
+  /** Whole numbers from min to max, the bounds of design D6 (the service holds the same rule). */
+  min: number;
+  max: number;
   /** Unit shown under the field (phút, giờ). */
   unit: string;
   /** Saves the typed number and returns the value the service kept. */
@@ -26,19 +29,26 @@ interface NumberSettingProps {
 }
 
 /** One setting: a Section with a short description and a one-field form; the service's refusal keeps the saved value. */
-function NumberSetting({ title, description, label, value, step, unit, save }: NumberSettingProps) {
+function NumberSetting({ title, description, label, value, min, max, unit, save }: NumberSettingProps) {
   const [text, setText] = useState(String(value));
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [fieldError, setFieldError] = useState<string | null>(null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setSaved(false);
+    // 1.5, 0 or an empty box is refused on the field and nothing is sent (AC-205); the service holds the same rule.
+    const refused = number(text, { integer: true, required: true, min, max });
+    setFieldError(refused);
+    if (refused) {
+      focusFirstInvalid(e.currentTarget as HTMLFormElement);
+      return;
+    }
     setPending(true);
     try {
-      // Sent as typed, so 1.5 or 0 is refused by the service and the saved value stays (AC-205).
       setText(String(await save(Number(text))));
       setSaved(true);
       notify.success(vi.common.saved);
@@ -57,8 +67,8 @@ function NumberSetting({ title, description, label, value, step, unit, save }: N
             {error}
           </Callout>
         )}
-        <FormField label={label} description={unit}>
-          <Input type="number" step={step} value={text} onChange={(e) => setText(e.target.value)} />
+        <FormField label={label} description={unit} error={fieldError}>
+          <NumberInput integer min={min} max={max} unit={unit} unitInLabel value={text} onChange={setText} />
         </FormField>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Button type="submit" variant="outline" loading={pending} className="w-full sm:w-auto">
@@ -111,6 +121,8 @@ export default function SettingsPage() {
                 description={vi.settings.graceHint}
                 label={vi.training.gracePeriod}
                 value={g.minutes}
+                min={BOUNDS.settingMinutes.min}
+                max={BOUNDS.settingMinutes.max}
                 unit={vi.settings.unitMinutes}
                 save={async (n) => (await api.setGracePeriod(n)).minutes}
               />
@@ -125,7 +137,8 @@ export default function SettingsPage() {
                 description={vi.settings.thresholdHint}
                 label={vi.training.lateChangeThreshold}
                 value={t.hours}
-                step="any"
+                min={BOUNDS.settingHours.min}
+                max={BOUNDS.settingHours.max}
                 unit={vi.settings.unitHours}
                 save={async (n) => (await api.setLateChangeThreshold(n)).hours}
               />
@@ -140,6 +153,8 @@ export default function SettingsPage() {
                 description={vi.settings.leaveNoticeHint}
                 label={vi.settings.leaveNoticeLabel}
                 value={l.days}
+                min={BOUNDS.settingDays.min}
+                max={BOUNDS.settingDays.max}
                 unit={vi.settings.unitDays}
                 save={async (n) => (await api.setLeaveNotice(n)).days}
               />
@@ -154,6 +169,8 @@ export default function SettingsPage() {
                 description={vi.settings.stockWarningHint}
                 label={vi.settings.stockWarningLabel}
                 value={w.days}
+                min={BOUNDS.settingDays.min}
+                max={BOUNDS.settingDays.max}
                 unit={vi.settings.unitDays}
                 save={async (n) => (await api.setStockWarning(n)).days}
               />

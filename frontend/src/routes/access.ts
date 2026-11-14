@@ -18,6 +18,7 @@ export const SECTIONS: RouteAccess[] = [
   { path: '/barn', any: ['VIEW_BARN'] },
   { path: '/supplies', any: ['VIEW_SUPPLIES'] },
   { path: '/billing', any: ['VIEW_BILLING'] },
+  { path: '/payments', any: ['MANAGE_PAYMENTS'] },
   { path: '/timetable', any: ['VIEW_OWN_TIMETABLE'] },
   { path: '/my-sessions', any: ['VIEW_ASSIGNED_SESSIONS'] },
   { path: '/accounts', any: ['MANAGE_ACCOUNTS'] },

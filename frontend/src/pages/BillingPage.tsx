@@ -6,6 +6,7 @@ import type { FeeTypeView, InvoiceRow, PriceRow, StatementOwnerRow } from '../ap
 import { useAuth } from '../auth/AuthContext';
 import { fieldsOf, messageOf } from '../components/ErrorText';
 import { StatementView } from '../components/StatementView';
+import { InvoicePayment } from '../components/InvoicePayment';
 import { ExportButton, PrintLink } from '../components/StatementActions';
 import { CategoryBreakdown, MonthlyTrend, OverviewCharts } from '../components/CostCharts';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogTitle } from '../components/ui/alert-dialog';
@@ -67,6 +68,10 @@ function OwnerView() {
         load={statement}
       >
         {(s) => (
+          <div className="grid gap-4">
+            {can('PAY_INVOICE') && s.closed && s.invoiceId != null && (
+              <InvoicePayment key={s.invoiceId} invoiceId={s.invoiceId} number={s.invoiceNumber ?? ''} />
+            )}
           <StatementView
             statement={s}
             actions={
@@ -78,6 +83,7 @@ function OwnerView() {
               ) : undefined
             }
           />
+          </div>
         )}
       </DataView>
     </div>
@@ -583,6 +589,16 @@ function InvoicesTab({ month }: { month: string }) {
     { id: 'owner', header: vi.billing.owner, cell: (i) => i.ownerName },
     { id: 'total', header: vi.billing.total, cell: (i) => <span className="tabular">{formatVnd(i.total)}</span> },
     { id: 'closedAt', header: vi.billing.invoices.closedAt, cell: (i) => clubDateTime(i.closedAt) },
+    {
+      id: 'payment',
+      header: vi.payment.status,
+      cell: (i) =>
+        i.paymentStatus === 'PAID' ? (
+          <Badge tone="eligible">{vi.payment.paid}</Badge>
+        ) : (
+          <Badge tone="watch">{vi.payment.unpaid}</Badge>
+        ),
+    },
     {
       id: 'view',
       header: vi.billing.view,

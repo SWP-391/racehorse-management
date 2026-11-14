@@ -75,6 +75,7 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'VIEW_BARN',
     'VIEW_BILLING',
     'EXPORT_BILLING',
+    'PAY_INVOICE',
   ],
   CLUB_MANAGER: [
     'VIEW_RATION',
@@ -103,6 +104,7 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'MANAGE_STOCK',
     'VIEW_STOCK',
     'SET_PRICES_AND_CLOSE_MONTH',
+    'MANAGE_PAYMENTS',
     'VIEW_BILLING',
     'EXPORT_BILLING',
   ],

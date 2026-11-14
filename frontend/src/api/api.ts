@@ -76,6 +76,9 @@ import type {
   AdjustmentInput,
   FeeTypeOption,
   InvoiceRow,
+  PaymentView,
+  TransferRow,
+  UnpaidInvoice,
   PriceList,
   Statement,
   BillingOverview,
@@ -406,6 +409,14 @@ export const api = {
   exportInvoice: (id: number) => download(`/api/billing/invoices/${id}/export`),
   closeMonth: (month: string) =>
     request<{ month: string; invoices: number; total: number }>('POST', `/api/billing/months/${month}/close`),
+  // payment of an invoice by bank transfer (BR-218 to BR-226)
+  openPayment: (invoiceId: number) => request<PaymentView>('POST', `/api/payments/invoices/${invoiceId}/open`),
+  paymentStatus: (invoiceId: number) => request<PaymentView>('GET', `/api/payments/invoices/${invoiceId}`),
+  receivedPayments: (page = 0) => request<Page<TransferRow>>('GET', `/api/payments/received?page=${page}`),
+  unmatchedPayments: (page = 0) => request<Page<TransferRow>>('GET', `/api/payments/unmatched?page=${page}`),
+  unpaidInvoices: () => request<UnpaidInvoice[]>('GET', '/api/payments/unpaid-invoices'),
+  assignTransfer: (transferId: number, invoiceId: number, reason: string) =>
+    request<void>('POST', `/api/payments/transfers/${transferId}/assign`, { invoiceId, reason }),
   addAdjustment: (input: AdjustmentInput) => request<void>('POST', '/api/billing/adjustments', clean(input)),
 };
 

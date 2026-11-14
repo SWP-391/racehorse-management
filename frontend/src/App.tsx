@@ -37,6 +37,7 @@ const RationPage = lazyRetry(() => import('./pages/RationPage'));
 const BarnPage = lazyRetry(() => import('./pages/BarnPage'));
 const SuppliesPage = lazyRetry(() => import('./pages/SuppliesPage'));
 const BillingPage = lazyRetry(() => import('./pages/BillingPage'));
+const PaymentsPage = lazyRetry(() => import('./pages/PaymentsPage'));
 const MySessionsPage = lazyRetry(() => import('./pages/MySessionsPage'));
 const TimetablePage = lazyRetry(() => import('./pages/TimetablePage'));
 const BillingPrintPage = lazyRetry(() => import('./pages/BillingPrintPage'));
@@ -107,6 +108,7 @@ function Routed() {
         <Route path="/barn" element={<Page><BarnPage /></Page>} />
         <Route path="/supplies" element={<Page><SuppliesPage /></Page>} />
         <Route path="/billing" element={<Page><BillingPage /></Page>} />
+        <Route path="/payments" element={<Page><PaymentsPage /></Page>} />
         <Route path="/timetable" element={<Page><TimetablePage /></Page>} />
         <Route path="/billing/print/:kind/:id" element={<Page><BillingPrintPage /></Page>} />
         <Route path="/my-sessions" element={<Page><MySessionsPage /></Page>} />

@@ -58,7 +58,9 @@ export type Permission =
   | 'MANAGE_STOCK'
   | 'VIEW_STOCK'
   | 'SET_PRICES_AND_CLOSE_MONTH'
-  | 'VIEW_BILLING';
+  | 'VIEW_BILLING'
+  | 'PAY_INVOICE'
+  | 'MANAGE_PAYMENTS';
 
 export type RationItemType = 'GRAIN' | 'HAY' | 'VITAMIN';
 export const RATION_ITEM_TYPES: RationItemType[] = ['GRAIN', 'HAY', 'VITAMIN'];
@@ -947,6 +949,57 @@ export interface InvoiceRow {
   number: string;
   total: number;
   closedAt: string;
+  /** Kept apart from the invoice, which never changes (BR-224). */
+  paymentStatus: 'PAID' | 'UNPAID';
+  paidAt: string | null;
+}
+
+/** What the owner needs to make the transfer without the QR (BR-218). */
+export interface TransferInfo {
+  bankCode: string;
+  accountNumber: string;
+  accountName: string;
+  amount: number;
+  content: string;
+}
+
+/** The payment of one invoice: unpaid with a QR, or paid with no QR (BR-218, BR-219, BR-226). */
+export interface PaymentView {
+  invoiceId: number;
+  number: string;
+  month: string;
+  total: number;
+  status: 'PAID' | 'UNPAID';
+  paymentCode: string | null;
+  paidAt: string | null;
+  simulated: boolean;
+  transfer: TransferInfo | null;
+  qrUrl: string | null;
+}
+
+/** One received transfer for the Club Manager, applied or kept unmatched (BR-221, BR-222). */
+export interface TransferRow {
+  id: number;
+  amount: number;
+  content: string;
+  transferredAt: string | null;
+  receivedAt: string;
+  simulated: boolean;
+  status: 'APPLIED' | 'UNMATCHED' | 'ASSIGNED';
+  reason: string | null;
+  reasonText: string | null;
+  invoiceId: number | null;
+  invoiceNumber: string | null;
+  ownerName: string | null;
+}
+
+export interface UnpaidInvoice {
+  id: number;
+  number: string;
+  month: string;
+  total: number;
+  ownerId: number;
+  ownerName: string;
 }
 
 export interface AdjustmentInput {

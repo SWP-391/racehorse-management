@@ -25,9 +25,9 @@ function menu() {
 }
 
 describe('role-aware navigation (task 7.1, BR-091)', () => {
-  test('Club Manager sees horses, health, accounts, audit log and settings', () => {
+  test('Club Manager sees horses, health, payments, accounts, audit log and settings', () => {
     renderAs('CLUB_MANAGER', <Layout />);
-    expect(menu()).toEqual(['Ngựa', 'Sức khỏe', 'Việc hằng ngày', 'Chuồng trại', 'Vật tư', 'Chi phí', 'Tài khoản', 'Nhật ký thao tác', 'Cài đặt']);
+    expect(menu()).toEqual(['Ngựa', 'Sức khỏe', 'Việc hằng ngày', 'Chuồng trại', 'Vật tư', 'Chi phí', 'Thanh toán', 'Tài khoản', 'Nhật ký thao tác', 'Cài đặt']);
   });
 
   test('Head Trainer sees horses, health and the progress board', () => {

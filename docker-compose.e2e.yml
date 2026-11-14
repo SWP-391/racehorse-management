@@ -1,0 +1,8 @@
+# Overrides for scripts/e2e.sh: the throwaway stack publishes no host ports (everything talks on the compose network).
+services:
+  db:
+    ports: !reset []
+  backend:
+    ports: !reset []
+  frontend:
+    ports: !reset []

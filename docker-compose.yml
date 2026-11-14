@@ -1,0 +1,81 @@
+# Local development stack.
+#   docker compose up -d db                      -> PostgreSQL only (run the service yourself)
+#   docker compose --profile app up -d           -> PostgreSQL + service + web client
+# The service image runs the jar built by `scripts/backend.sh package -DskipTests`.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: racehorse
+      POSTGRES_USER: racehorse
+      POSTGRES_PASSWORD: racehorse
+    ports:
+      - "5432:5432"
+    volumes:
+      - racehorse-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U racehorse -d racehorse"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  backend:
+    profiles: ["app"]
+    image: eclipse-temurin:21-jre
+    working_dir: /app
+    command: ["sh", "-c", "java -jar /app/target/racehorse-backend-0.1.0-SNAPSHOT.jar"]
+    volumes:
+      - ./backend/target:/app/target:ro
+      - racehorse-videos:/data/videos
+      - racehorse-photos:/data/photos
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/racehorse
+      DB_USER: racehorse
+      DB_PASSWORD: racehorse
+      # The email the first Club Manager signs in with; an existing Club Manager without an email takes it (BR-212).
+      BOOTSTRAP_EMAIL: ${BOOTSTRAP_EMAIL:-}
+      # The service refuses to start without it while no Club Manager exists (TECH-006).
+      BOOTSTRAP_PASSWORD: ${BOOTSTRAP_PASSWORD:-}
+      CLUB_TIME_ZONE: ${CLUB_TIME_ZONE:-Asia/Ho_Chi_Minh}
+      # The recovery code goes by email through the HTTPS API of Brevo; MAIL_FROM is a sender verified in Brevo (TECH-226).
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Racehorse}
+      # Payment of an invoice by bank transfer: the key SePay sends, the bank details of the QR, and the test-mode label
+      # (DEC-073). While the key is empty every notice is refused.
+      SEPAY_WEBHOOK_API_KEY: ${SEPAY_WEBHOOK_API_KEY:-}
+      SEPAY_BANK_CODE: ${SEPAY_BANK_CODE:-VietinBank}
+      SEPAY_ACCOUNT_NUMBER: ${SEPAY_ACCOUNT_NUMBER:-0000000001}
+      SEPAY_ACCOUNT_NAME: ${SEPAY_ACCOUNT_NAME:-}
+      SEPAY_QR_BASE_URL: ${SEPAY_QR_BASE_URL:-https://vietqr.app/img}
+      SEPAY_TEST_MODE: ${SEPAY_TEST_MODE:-true}
+      # Trial-run video files, kept outside the database (TECH-005).
+      VIDEO_DIR: /data/videos
+      # Horse photos (BR-184), kept next to the videos.
+      PHOTO_DIR: /data/photos
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    profiles: ["app"]
+    image: node:22-alpine
+    working_dir: /app
+    command: ["sh", "-c", "npm ci --no-audit --no-fund && npx vite --host 0.0.0.0"]
+    volumes:
+      - ./frontend:/app
+      - racehorse-frontend-modules:/app/node_modules
+    environment:
+      API_TARGET: http://backend:8080
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  racehorse-db:
+  racehorse-videos:
+  racehorse-photos:
+  racehorse-frontend-modules:

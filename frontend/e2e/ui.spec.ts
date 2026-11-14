@@ -19,10 +19,10 @@ async function pick(page: Page, scope: Page | Locator, label: string | RegExp, o
 // requests, nothing off-screen, no serious/critical axe finding. Self-contained: makes its own accounts.
 const suffix = `ui${process.env.E2E_SUFFIX ?? Date.now().toString(36)}`;
 const people = {
-  HEAD_TRAINER: { username: `ht-${suffix}`, password: 'trainer-password-1', name: `Trần Văn Hùng ${suffix}` },
-  VETERINARIAN: { username: `vet-${suffix}`, password: 'vet-password-12', name: `Nguyễn Thị Mai ${suffix}` },
-  GROOM: { username: `groom-${suffix}`, password: 'groom-password-1', name: `Lê Văn Tâm ${suffix}` },
-  HORSE_OWNER: { username: `owner-${suffix}`, password: 'owner-password-1', name: `Phạm Quốc Bảo ${suffix}` },
+  HEAD_TRAINER: { email: `ht-${suffix}@racehorse.example`, password: 'trainer-password-1', name: `Trần Văn Hùng ${suffix}` },
+  VETERINARIAN: { email: `vet-${suffix}@racehorse.example`, password: 'vet-password-12', name: `Nguyễn Thị Mai ${suffix}` },
+  GROOM: { email: `groom-${suffix}@racehorse.example`, password: 'groom-password-1', name: `Lê Văn Tâm ${suffix}` },
+  HORSE_OWNER: { email: `owner-${suffix}@racehorse.example`, password: 'owner-password-1', name: `Phạm Quốc Bảo ${suffix}` },
 };
 const horseName = `Bạch Long ${suffix}`;
 const OUT = 'test-results/ui';
@@ -95,9 +95,9 @@ async function offscreen(page: Page): Promise<string[]> {
   });
 }
 
-async function signIn(page: Page, username: string, password: string) {
+async function signIn(page: Page, email: string, password: string) {
   await page.goto('/');
-  await page.getByLabel('Tên đăng nhập').fill(username);
+  await page.getByLabel('Email').fill(email);
   await page.getByLabel('Mật khẩu').fill(password);
   await page.getByRole('button', { name: 'Đăng nhập' }).click();
   await expect(page.getByTestId('user-menu').first()).toBeAttached();
@@ -185,18 +185,18 @@ const clubDate = (offsetDays = 0) =>
   new Date(Date.now() + offsetDays * 864e5).toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
 
 test('setup: accounts and one horse for the UI checks', async ({ page }) => {
-  await signIn(page, admin.username, admin.password);
+  await signIn(page, admin.email, admin.password);
   for (const [role, p] of Object.entries(people)) {
     await page.getByRole('link', { name: 'Tài khoản' }).click();
-    await page.getByLabel(/^Tên đăng nhập/).fill(p.username);
+    await page.getByLabel(/^Email/).fill(p.email);
     await page.getByLabel(/^Họ tên/).fill(p.name);
     await page.getByLabel(/^Mật khẩu/).fill(p.password);
     await page.getByLabel(/^Vai trò/).selectOption(role);
     await page.getByRole('button', { name: 'Tạo tài khoản' }).click();
     // The accounts list is paged: search for the new account instead of hoping it is on the first page.
-    await page.getByPlaceholder('Tìm theo họ tên hoặc tên đăng nhập').fill(p.username);
-    await expect(page.getByRole('cell', { name: p.username, exact: true })).toBeVisible();
-    await page.getByPlaceholder('Tìm theo họ tên hoặc tên đăng nhập').fill('');
+    await page.getByPlaceholder('Tìm theo họ tên hoặc email').fill(p.email);
+    await expect(page.getByRole('cell', { name: p.email, exact: true })).toBeVisible();
+    await page.getByPlaceholder('Tìm theo họ tên hoặc email').fill('');
   }
   await page.getByRole('link', { name: 'Ngựa' }).click();
   await page.getByRole('link', { name: 'Đăng ký ngựa' }).first().click();
@@ -215,7 +215,7 @@ test('setup: accounts and one horse for the UI checks', async ({ page }) => {
 
 test('setup: the horse is cleared, planned and a session is running, assigned to the Groom', async ({ page }) => {
   // Veterinarian: examine the new horse, lift the intake lock, set Đủ điều kiện.
-  await signIn(page, people.VETERINARIAN.username, people.VETERINARIAN.password);
+  await signIn(page, people.VETERINARIAN.email, people.VETERINARIAN.password);
   await page.goto(horse());
   // The horse page is a hub of tiles; a tile opens its panel in a dialog.
   await page.getByRole('button', { name: /^Sức khỏe/ }).click();
@@ -249,7 +249,7 @@ test('setup: the horse is cleared, planned and a session is running, assigned to
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
   // Head Trainer: plan, activate, schedule today for the Groom, start.
-  await signIn(page, people.HEAD_TRAINER.username, people.HEAD_TRAINER.password);
+  await signIn(page, people.HEAD_TRAINER.email, people.HEAD_TRAINER.password);
   await page.goto(`${horse()}/plans/new`);
   await page.getByLabel('Tên giáo án').fill('Giáo án mùa thu');
   await page.getByLabel('Tên giai đoạn').fill('Nền tảng');
@@ -281,7 +281,7 @@ test('setup: the horse is cleared, planned and a session is running, assigned to
 test('stable care: a Groom ticks a chore, the Club Manager sets a stall and decides a restock', async ({ page }) => {
   const item = `Yến mạch ${suffix}`;
   // Groom: tick feeding for the horse, then tick it away again with a reason.
-  await signIn(page, people.GROOM.username, people.GROOM.password);
+  await signIn(page, people.GROOM.email, people.GROOM.password);
   await page.getByRole('link', { name: 'Việc hằng ngày' }).click();
   // The chores list is paged: narrow it to this run's horse.
   await page.getByPlaceholder(/^Tìm theo tên ngựa/).fill(horseName);
@@ -296,7 +296,7 @@ test('stable care: a Groom ticks a chore, the Club Manager sets a stall and deci
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
   // Club Manager: stall for the horse, one supply item.
-  await signIn(page, admin.username, admin.password);
+  await signIn(page, admin.email, admin.password);
   const areaName = `Khu ${suffix}`;
   await page.goto('/barn');
   await page.getByRole('button', { name: 'Thêm khu' }).click();
@@ -324,7 +324,7 @@ test('stable care: a Groom ticks a chore, the Club Manager sets a stall and deci
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
   // Groom proposes a restock; Club Manager approves it.
-  await signIn(page, people.GROOM.username, people.GROOM.password);
+  await signIn(page, people.GROOM.email, people.GROOM.password);
   await page.goto('/supplies');
   await page.getByPlaceholder('Tìm vật tư theo tên').fill(item);
   await page.getByRole('button', { name: `Đề xuất bổ sung ${item}` }).click();
@@ -332,7 +332,7 @@ test('stable care: a Groom ticks a chore, the Club Manager sets a stall and deci
   await page.getByRole('button', { name: 'Gửi đề xuất' }).click();
   await expect(page.getByText('Chờ duyệt').first()).toBeVisible();
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
-  await signIn(page, admin.username, admin.password);
+  await signIn(page, admin.email, admin.password);
   await page.goto('/supplies');
   await page.getByRole('button', { name: `Duyệt đề xuất ${item}` }).click();
   // Approving asks for a confirmation first.
@@ -341,7 +341,7 @@ test('stable care: a Groom ticks a chore, the Club Manager sets a stall and deci
   await expect(page.getByRole('button', { name: `Duyệt đề xuất ${item}` })).toHaveCount(0);
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
   // The Groom sees the decision on their own proposals.
-  await signIn(page, people.GROOM.username, people.GROOM.password);
+  await signIn(page, people.GROOM.email, people.GROOM.password);
   await page.goto('/supplies');
   await expect(page.getByText('Đã duyệt').first()).toBeVisible();
 });
@@ -373,7 +373,7 @@ test('signed out: the login page', async ({ page }) => {
 });
 
 test('Club Manager pages', async ({ page }) => {
-  await signIn(page, admin.username, admin.password);
+  await signIn(page, admin.email, admin.password);
   for (const [label, path] of [
     ['horses', '/horses'],
     ['horse-new', '/horses/new'],
@@ -393,7 +393,7 @@ test('Club Manager pages', async ({ page }) => {
 });
 
 test('Head Trainer pages', async ({ page }) => {
-  await signIn(page, people.HEAD_TRAINER.username, people.HEAD_TRAINER.password);
+  await signIn(page, people.HEAD_TRAINER.email, people.HEAD_TRAINER.password);
   for (const [label, path] of [
     ['horses', '/horses'],
     ['horse-detail', horse()],
@@ -413,7 +413,7 @@ test('Head Trainer pages', async ({ page }) => {
 // Two tests: eight pages at five widths, one of them the 3D view under software WebGL, do not fit one 480 s budget on a
 // stack with the demo data.
 test('Veterinarian pages (care and records)', async ({ page }) => {
-  await signIn(page, people.VETERINARIAN.username, people.VETERINARIAN.password);
+  await signIn(page, people.VETERINARIAN.email, people.VETERINARIAN.password);
   for (const [label, path] of [
     ['health', '/health'],
     ['horse-detail', horse()],
@@ -425,7 +425,7 @@ test('Veterinarian pages (care and records)', async ({ page }) => {
 });
 
 test('Veterinarian pages (injuries, incidents, stable)', async ({ page }) => {
-  await signIn(page, people.VETERINARIAN.username, people.VETERINARIAN.password);
+  await signIn(page, people.VETERINARIAN.email, people.VETERINARIAN.password);
   for (const [label, path] of [
     ['injuries', `${horse()}/injuries`],
     ['incidents', '/incidents'],
@@ -437,7 +437,7 @@ test('Veterinarian pages (injuries, incidents, stable)', async ({ page }) => {
 });
 
 test('Groom pages', async ({ page }) => {
-  await signIn(page, people.GROOM.username, people.GROOM.password);
+  await signIn(page, people.GROOM.email, people.GROOM.password);
   for (const [label, path] of [
     ['incidents', '/incidents'],
     ['my-sessions', '/my-sessions'],
@@ -451,7 +451,7 @@ test('Groom pages', async ({ page }) => {
 });
 
 test('Horse Owner pages', async ({ page }) => {
-  await signIn(page, people.HORSE_OWNER.username, people.HORSE_OWNER.password);
+  await signIn(page, people.HORSE_OWNER.email, people.HORSE_OWNER.password);
   for (const [label, path] of [
     ['horses', '/horses'],
     ['horse-detail', horse()],

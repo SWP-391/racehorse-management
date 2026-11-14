@@ -8,7 +8,7 @@ import { canOpen, homeFor } from '../routes/access';
 interface AuthState {
   me: Me | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   can: (permission: Permission) => boolean;
   /** Why the person is back at sign-in without having signed out (BR-191); null when they signed out themselves. */
@@ -60,8 +60,8 @@ export function AuthProvider({ children, initial, onSignedOut }: { children: Rea
     return () => setSessionEndedHandler(null);
   }, []);
 
-  const login = useCallback(async (username: string, password: string) => {
-    const next = await api.login(username, password);
+  const login = useCallback(async (email: string, password: string) => {
+    const next = await api.login(email, password);
     resetSessionEnded();
     const from = returnTo.current ?? currentPath();
     returnTo.current = null;

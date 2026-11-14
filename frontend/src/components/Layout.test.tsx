@@ -54,7 +54,7 @@ describe('role-aware navigation (task 7.1, BR-091)', () => {
 describe('sign-in screen', () => {
   test('shows the service message when sign-in is refused', async () => {
     vitest.mocked(api.login).mockRejectedValue(
-      new ApiError(401, 'INVALID_CREDENTIALS', 'Sai tên đăng nhập hoặc mật khẩu, hoặc tài khoản đã bị vô hiệu hóa.'),
+      new ApiError(401, 'INVALID_CREDENTIALS', 'Sai email hoặc mật khẩu, hoặc tài khoản đã bị vô hiệu hóa.'),
     );
     render(
       <AuthProvider initial={null}>
@@ -63,7 +63,7 @@ describe('sign-in screen', () => {
         </MemoryRouter>
       </AuthProvider>,
     );
-    await userEvent.type(screen.getByLabelText('Tên đăng nhập'), 'x');
+    await userEvent.type(screen.getByLabelText('Email'), 'x@racehorse.example');
     await userEvent.type(screen.getByLabelText('Mật khẩu'), 'y');
     await userEvent.click(screen.getByRole('button', { name: 'Đăng nhập' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('tài khoản đã bị vô hiệu hóa');

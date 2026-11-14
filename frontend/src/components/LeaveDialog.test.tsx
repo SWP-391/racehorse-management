@@ -10,7 +10,7 @@ import type { Account, Leave } from '../api/types';
 
 vitest.mock('../api/api', () => ({ api: { leave: vitest.fn(), leaveNotice: vitest.fn(), recordLeave: vitest.fn(), cancelLeave: vitest.fn() } }));
 
-const groom = { id: 7, username: 'g', displayName: 'Groom An', role: 'GROOM', active: true, createdAt: '' } as Account;
+const groom = { id: 7, email: 'g@racehorse.example', displayName: 'Groom An', role: 'GROOM', active: true, createdAt: '' } as Account;
 const leave = (id: number, reason: string): Leave =>
   ({ id, accountId: 7, date: '2030-01-10', reason, cancelled: false, late: false, noticeDays: 7, recordedBy: 'QL' }) as unknown as Leave;
 

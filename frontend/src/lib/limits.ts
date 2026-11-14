@@ -3,7 +3,7 @@
  * the length of the column it is saved in, so a longer entry is stopped on the field and never reaches a 500 (input-validation).
  */
 export const LIMITS = {
-  username: 100,
+  email: 254,
   displayName: 200,
   horseName: 200,
   coatColour: 100,

@@ -24,7 +24,7 @@ vitest.mock('./pages/ProgressPage', () => page('progress'));
 vitest.mock('./pages/IncidentsPage', () => page('incidents'));
 
 async function signIn(user: string) {
-  await userEvent.type(await screen.findByLabelText('Tên đăng nhập'), user);
+  await userEvent.type(await screen.findByLabelText('Email'), user);
   await userEvent.type(screen.getByLabelText('Mật khẩu'), 'password-123');
   await userEvent.click(screen.getByRole('button', { name: 'Đăng nhập' }));
 }

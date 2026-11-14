@@ -41,6 +41,9 @@ const DETAIL_ROUTES: RouteAccess[] = [
 
 export const ROUTE_ACCESS: RouteAccess[] = [...DETAIL_ROUTES, ...SECTIONS];
 
+/** Pages open before signing in and to nobody once signed in: they have no access entry on purpose (PERM-058). */
+export const PUBLIC_ROUTES = ['/forgot-password'];
+
 /** True when the account's role may open this path (a path with no entry is not openable). */
 export function canOpen(me: Me, path: string): boolean {
   const pathname = path.split(/[?#]/)[0];

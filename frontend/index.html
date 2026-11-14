@@ -6,6 +6,25 @@
     <title>Quản lý Huấn luyện Ngựa đua</title>
   </head>
   <body>
+    <script>
+      // A script or stylesheet that fails to load (a dropped connection) leaves a blank page. Load the same file again, a
+      // few times with a growing pause, instead of waiting for the person to reload.
+      addEventListener('error', function (e) {
+        var t = e.target;
+        if (!t || (t.tagName !== 'SCRIPT' && !(t.tagName === 'LINK' && t.rel === 'stylesheet'))) return;
+        var url = t.src || t.href;
+        if (!url) return;
+        var n = Number(t.getAttribute('data-tries') || 0);
+        if (n >= 8) return;
+        setTimeout(function () {
+          var c = document.createElement(t.tagName === 'SCRIPT' ? 'script' : 'link');
+          if (t.tagName === 'SCRIPT') { c.type = t.type; c.src = url.split('?')[0] + '?r=' + (n + 1); }
+          else { c.rel = 'stylesheet'; c.href = url.split('?')[0] + '?r=' + (n + 1); }
+          c.setAttribute('data-tries', String(n + 1));
+          document.head.appendChild(c);
+        }, 300 * (n + 1));
+      }, true);
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

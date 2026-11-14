@@ -34,9 +34,9 @@ function UserBlock() {
           <span className="line-clamp-2 text-sm font-medium break-words" title={me.displayName}>
             {me.displayName}
           </span>
-          {/* When the name is the role itself (the bootstrap Club Manager), the username tells the account apart. */}
+          {/* When the name is the role itself (the bootstrap Club Manager), the email tells the account apart. */}
           <span className="truncate text-meta text-muted-foreground">
-            {me.displayName === vi.roles[me.role] ? me.username : vi.roles[me.role]}
+            {me.displayName === vi.roles[me.role] ? me.email : vi.roles[me.role]}
           </span>
         </div>
       </div>

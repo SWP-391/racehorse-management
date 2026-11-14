@@ -23,7 +23,7 @@ const entry = {
 beforeEach(() => {
   vitest.mocked(api.audit).mockResolvedValue(pageOf([entry]));
   vitest.mocked(api.accounts).mockResolvedValue(pageOf([
-    { id: 5, username: 'cm', displayName: 'Quản lý A', role: 'CLUB_MANAGER', active: true, createdAt: '' },
+    { id: 5, email: 'cm@racehorse.example', displayName: 'Quản lý A', role: 'CLUB_MANAGER', active: true, createdAt: '' },
   ]));
 });
 

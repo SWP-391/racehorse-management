@@ -31,7 +31,7 @@ describe('an ended session (BR-191, TECH-126)', () => {
 
   test('AC-281 a wrong password is a 401 of its own and does not end a session', async () => {
     vitest.stubGlobal('fetch', vitest.fn().mockResolvedValue(reply(401, { code: 'INVALID_CREDENTIALS', message: 'Sai mật khẩu.' })));
-    await expect(request('POST', '/api/auth/login', { username: 'x', password: 'y' })).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
+    await expect(request('POST', '/api/auth/login', { email: 'x@racehorse.example', password: 'y' })).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
     expect(handler).not.toHaveBeenCalled();
   });
 

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Ban, CalendarClock, CalendarOff, CircleAlert, CircleCheck, ShieldOff, Users } from 'lucide-react';
+import { Ban, CalendarClock, CalendarOff, CircleAlert, CircleCheck, Mail, ShieldOff, Users } from 'lucide-react';
 import { api } from '../api/api';
 import { ApiError } from '../api/client';
 import { ROLES, type Account, type Role, type ScheduleRange } from '../api/types';
@@ -7,6 +7,7 @@ import { useAuth } from '../auth/AuthContext';
 import { vi } from '../i18n/vi';
 import { usePagedList } from '../hooks/usePagedList';
 import { notify } from '../lib/notify';
+import { AccountEmailDialog } from '../components/AccountEmailDialog';
 import { GroomScheduleDialog } from '../components/GroomScheduleDialog';
 import { LeaveDialog } from '../components/LeaveDialog';
 import { ScheduleEditor, toServiceRanges } from '../components/ScheduleEditor';
@@ -18,12 +19,12 @@ import { Badge, PageHeader, Section } from '../components/ui/display';
 import { FormField } from '../components/ui/form-field';
 import { Input } from '../components/ui/input';
 import { LIMITS } from '../lib/limits';
-import { blank, collect, focusFirstInvalid, maxLength, required } from '../lib/validate';
+import { blank, collect, emailShape, focusFirstInvalid, maxLength, required } from '../lib/validate';
 import { ListFooter, ListToolbar } from '../components/ui/list-toolbar';
 import { Select } from '../components/ui/select';
 import { Callout, EmptyState } from '../components/ui/states';
 
-const EMPTY_FORM = { username: '', displayName: '', password: '', role: '' as Role | '' };
+const EMPTY_FORM = { email: '', displayName: '', password: '', role: '' as Role | '' };
 
 /**
  * Club Manager: create accounts with exactly one role, change role, deactivate (BR-090); a Groom gets fixed weekly
@@ -40,6 +41,7 @@ export default function AccountsPage() {
   const [schedule, setSchedule] = useState<ScheduleRange[]>([]);
   const [scheduleOf, setScheduleOf] = useState<Account | null>(null);
   const [leaveOf, setLeaveOf] = useState<Account | null>(null);
+  const [emailOf, setEmailOf] = useState<Account | null>(null);
 
   if (!allowed) {
     return (
@@ -63,7 +65,7 @@ export default function AccountsPage() {
     setError(null);
     // The service's rules for an account (AccountController.CreateRequest), said on the fields before sending.
     const refused = collect({
-      username: required(form.username) ?? maxLength(form.username, LIMITS.username),
+      email: required(form.email) ?? maxLength(form.email, LIMITS.email) ?? emailShape(form.email),
       displayName: required(form.displayName) ?? maxLength(form.displayName, LIMITS.displayName),
       password: required(form.password) ?? (form.password.length < 8 ? 'Mật khẩu cần 8 ký tự trở lên.' : maxLength(form.password, 100)),
       roles: blank(form.role) ? 'Bắt buộc chọn vai trò.' : null,
@@ -76,7 +78,7 @@ export default function AccountsPage() {
     setPending(true);
     try {
       await api.createAccount({
-        username: form.username,
+        email: form.email,
         displayName: form.displayName,
         password: form.password,
         roles: form.role ? [form.role] : [],
@@ -119,7 +121,18 @@ export default function AccountsPage() {
 
   const columns: DataColumn<Account>[] = [
     { id: 'name', header: vi.accounts.displayName, primary: true, sortValue: (a) => a.displayName, cell: (a) => a.displayName },
-    { id: 'username', fit: true, header: vi.accounts.username, sortValue: (a) => a.username, cell: (a) => a.username },
+    {
+      id: 'email',
+      fit: true,
+      header: vi.accounts.email,
+      sortValue: (a) => a.email ?? '',
+      cell: (a) =>
+        a.email ?? (
+          <Badge tone="watch" icon={<CircleAlert aria-hidden />}>
+            {vi.accounts.noEmail}
+          </Badge>
+        ),
+    },
     {
       id: 'role',
       header: vi.accounts.role,
@@ -136,7 +149,7 @@ export default function AccountsPage() {
             {/* The phone card's term sits above the full-width select, so the role is never truncated. */}
             <span className="mb-1 block text-meta text-muted-foreground xl:hidden">{vi.accounts.role}</span>
             <Select
-              aria-label={`${vi.accounts.changeRole} ${a.username}`}
+              aria-label={`${vi.accounts.changeRole} ${a.email ?? a.displayName}`}
               className="w-full xl:w-40"
               value={a.role}
               onChange={(e) => void changeRole(a, e.target.value as Role)}
@@ -194,6 +207,13 @@ export default function AccountsPage() {
               </Button>
             </>
           )}
+          {/* Nobody changes their own email (BR-212), so the signed-in person's row has no email button. */}
+          {a.id !== me?.id && (
+            <Button type="button" variant="outline" size="sm" aria-label={`${a.email ? vi.accounts.correctEmail : vi.accounts.enterEmail} ${a.displayName}`} onClick={() => setEmailOf(a)}>
+              <Mail aria-hidden />
+              {a.email ? vi.accounts.correctEmail : vi.accounts.enterEmail}
+            </Button>
+          )}
           {a.active && a.id !== me?.id && (
             <ConfirmButton
               destructive
@@ -226,8 +246,8 @@ export default function AccountsPage() {
         <Section title={vi.accounts.create}>
           <form onSubmit={create} noValidate aria-label={vi.accounts.create} className="grid max-w-3xl gap-5">
             <div className="grid gap-5 md:grid-cols-2">
-              <FormField label={vi.accounts.username} error={fieldErrors.username}>
-                <Input maxLength={LIMITS.username} autoComplete="off" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+              <FormField label={vi.accounts.email} error={fieldErrors.email}>
+                <Input type="email" inputMode="email" maxLength={LIMITS.email} autoComplete="off" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
               </FormField>
               <FormField label={vi.accounts.displayName} error={fieldErrors.displayName}>
                 <Input maxLength={LIMITS.displayName} value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
@@ -311,6 +331,7 @@ export default function AccountsPage() {
       </div>
       <GroomScheduleDialog groom={scheduleOf} onClose={() => setScheduleOf(null)} onSaved={() => void list.load.reload()} />
       <LeaveDialog groom={leaveOf} onClose={() => setLeaveOf(null)} />
+      <AccountEmailDialog account={emailOf} onClose={() => setEmailOf(null)} onSaved={() => void list.load.reload()} />
     </>
   );
 }

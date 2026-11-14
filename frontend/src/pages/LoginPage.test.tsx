@@ -41,15 +41,15 @@ describe('sign-in after an ended session (BR-191)', () => {
   test('editing the form clears the message', async () => {
     await endSession();
     expect(screen.getByText(EXPIRED)).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText('Tên đăng nhập'), 'x');
+    await userEvent.type(screen.getByLabelText('Email'), 'x@racehorse.example');
     expect(screen.queryByText(EXPIRED)).not.toBeInTheDocument();
   });
 
   test('AC-281 a refused sign-in keeps the expiry message, adds the refusal and does not loop', async () => {
     await endSession();
-    vitest.mocked(api.login).mockRejectedValue(new ApiError(401, 'INVALID_CREDENTIALS', 'Sai tên đăng nhập hoặc mật khẩu.'));
+    vitest.mocked(api.login).mockRejectedValue(new ApiError(401, 'INVALID_CREDENTIALS', 'Sai email hoặc mật khẩu.'));
     await userEvent.click(screen.getByRole('button', { name: 'Đăng nhập' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Sai tên đăng nhập hoặc mật khẩu.');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sai email hoặc mật khẩu.');
     expect(screen.getByText(EXPIRED)).toBeInTheDocument();
     expect(api.login).toHaveBeenCalledTimes(1);
   });

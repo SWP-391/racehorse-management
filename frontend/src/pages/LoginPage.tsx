@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState, type FormEvent } from 'react';
-import { CircleAlert, Clock, LogIn } from 'lucide-react';
+import { CircleAlert, CircleCheck, Clock, LogIn } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
 import { vi } from '../i18n/vi';
@@ -20,7 +21,9 @@ const canAnimate = () =>
 
 export default function LoginPage() {
   const { login, endedReason, clearEndedReason } = useAuth();
-  const [username, setUsername] = useState('');
+  const location = useLocation();
+  const passwordReset = (location.state as { passwordReset?: boolean } | null)?.passwordReset === true;
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -31,7 +34,7 @@ export default function LoginPage() {
     setError(null);
     setPending(true);
     try {
-      await login(username, password);
+      await login(email, password);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : vi.common.unexpectedError);
     } finally {
@@ -64,11 +67,23 @@ export default function LoginPage() {
             <h2 className="text-h2">{vi.auth.formTitle}</h2>
             <p className="text-sm text-muted-foreground">{vi.auth.formHint}</p>
           </div>
-          <FormField label={vi.auth.username}>
-            <Input value={username} onChange={(e) => {
+          {passwordReset && (
+            <Callout tone="success" icon={CircleCheck} role="status">
+              {vi.auth.passwordResetDone}
+            </Callout>
+          )}
+          <FormField label={vi.auth.email}>
+            <Input
+              type="email"
+              inputMode="email"
+              value={email}
+              onChange={(e) => {
                 clearEndedReason();
-                setUsername(e.target.value);
-              }} autoComplete="username" autoFocus />
+                setEmail(e.target.value);
+              }}
+              autoComplete="username"
+              autoFocus
+            />
           </FormField>
           <FormField label={vi.auth.password}>
             <Input
@@ -95,6 +110,9 @@ export default function LoginPage() {
             {!pending && <LogIn aria-hidden />}
             {vi.auth.signIn}
           </Button>
+          <Link to="/forgot-password" className="justify-self-center text-sm text-primary underline-offset-4 hover:underline">
+            {vi.auth.forgotPassword}
+          </Link>
         </form>
       </section>
     </main>

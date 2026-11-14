@@ -37,11 +37,11 @@ async function chooseResponsible(form: Locator, name: string) {
 // registers a horse for them; the Owner signs in and sees it.
 // Fixed per run: Playwright restarts the worker after a failure, which would otherwise change it mid-file.
 const suffix = process.env.E2E_SUFFIX ?? Date.now().toString(36);
-const owner = { username: `owner-${suffix}`, password: 'owner-password-1', name: `Chủ ngựa ${suffix}` };
+const owner = { email: `owner-${suffix}@racehorse.example`, password: 'owner-password-1', name: `Chủ ngựa ${suffix}` };
 const horseName = `Sao Mai ${suffix}`;
-const vet = { username: `vet-${suffix}`, password: 'vet-password-12', name: `Bác sĩ ${suffix}` };
-const groom = { username: `groom-${suffix}`, password: 'groom-password-1', name: `Groom ${suffix}` };
-const trainer = { username: `ht-${suffix}`, password: 'trainer-password-1', name: `HLV ${suffix}` };
+const vet = { email: `vet-${suffix}@racehorse.example`, password: 'vet-password-12', name: `Bác sĩ ${suffix}` };
+const groom = { email: `groom-${suffix}@racehorse.example`, password: 'groom-password-1', name: `Groom ${suffix}` };
+const trainer = { email: `ht-${suffix}@racehorse.example`, password: 'trainer-password-1', name: `HLV ${suffix}` };
 
 // On failure, print what the user would have seen: far more useful than a locator timeout.
 test.afterEach(async ({ page }, info) => {
@@ -58,41 +58,41 @@ function clubDate(offsetDays = 0): string {
   return new Date(Date.now() + offsetDays * 864e5).toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
 }
 
-async function signIn(page: Page, username: string, password: string) {
+async function signIn(page: Page, email: string, password: string) {
   await page.goto('/');
-  await page.getByLabel('Tên đăng nhập').fill(username);
+  await page.getByLabel('Email').fill(email);
   await page.getByLabel('Mật khẩu').fill(password);
   await page.getByRole('button', { name: 'Đăng nhập' }).click();
   await page.locator('aside').first().waitFor({ state: 'attached', timeout: 15_000 });
 }
 
-async function createAccount(page: Page, a: { username: string; password: string; name: string }, role: string) {
+async function createAccount(page: Page, a: { email: string; password: string; name: string }, role: string) {
   await page.getByRole('link', { name: 'Tài khoản' }).click();
-  await page.getByLabel(/^Tên đăng nhập/).fill(a.username);
+  await page.getByLabel(/^Email/).fill(a.email);
   await page.getByLabel(/^Họ tên/).fill(a.name);
   await page.getByLabel(/^Mật khẩu/).fill(a.password);
   await page.getByLabel(/^Vai trò/).selectOption(role);
   await page.getByRole('button', { name: 'Tạo tài khoản' }).click();
-  await expectAccountListed(page, a.username);
+  await expectAccountListed(page, a.email);
 }
 
 /** The accounts list is paged: search for the new account instead of hoping it is on the first page. */
-async function expectAccountListed(page: Page, username: string) {
-  await page.getByPlaceholder('Tìm theo họ tên hoặc tên đăng nhập').fill(username);
-  await expect(page.getByRole('cell', { name: username, exact: true })).toBeVisible();
-  await page.getByPlaceholder('Tìm theo họ tên hoặc tên đăng nhập').fill('');
+async function expectAccountListed(page: Page, email: string) {
+  await page.getByPlaceholder('Tìm theo họ tên hoặc email').fill(email);
+  await expect(page.getByRole('cell', { name: email, exact: true })).toBeVisible();
+  await page.getByPlaceholder('Tìm theo họ tên hoặc email').fill('');
 }
 
 test('AC-001 Club Manager registers a horse and its owner sees it', async ({ page }) => {
-  await signIn(page, admin.username, admin.password);
+  await signIn(page, admin.email, admin.password);
 
   await page.getByRole('link', { name: 'Tài khoản' }).click();
-  await page.getByLabel(/^Tên đăng nhập/).fill(owner.username);
+  await page.getByLabel(/^Email/).fill(owner.email);
   await page.getByLabel(/^Họ tên/).fill(owner.name);
   await page.getByLabel(/^Mật khẩu/).fill(owner.password);
   await page.getByLabel(/^Vai trò/).selectOption('HORSE_OWNER');
   await page.getByRole('button', { name: 'Tạo tài khoản' }).click();
-  await expectAccountListed(page, owner.username);
+  await expectAccountListed(page, owner.email);
   // Every horse has an assigned Head Trainer, chosen when it is registered (BR-152).
   await createAccount(page, trainer, 'HEAD_TRAINER');
 
@@ -110,7 +110,7 @@ test('AC-001 Club Manager registers a horse and its owner sees it', async ({ pag
   await expect(page.getByRole('heading', { name: horseName })).toBeVisible();
 
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
-  await signIn(page, owner.username, owner.password);
+  await signIn(page, owner.email, owner.password);
   await expect(page.getByRole('link', { name: horseName })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Tài khoản' })).toHaveCount(0);
 
@@ -120,14 +120,14 @@ test('AC-001 Club Manager registers a horse and its owner sees it', async ({ pag
 });
 
 test('AC-039 Veterinarian clears the new horse, Head Trainer plans, schedules, starts and ends a session', async ({ page }) => {
-  await signIn(page, admin.username, admin.password);
+  await signIn(page, admin.email, admin.password);
   await createAccount(page, vet, 'VETERINARIAN');
   // Only an active Groom can be the responsible person of a session (BR-134, DEC-053).
   await createAccount(page, groom, 'GROOM');
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
   // Veterinarian: examine the new horse, set Đủ điều kiện and lift the intake lock.
-  await signIn(page, vet.username, vet.password);
+  await signIn(page, vet.email, vet.password);
   await openHorse(page);
   await openTile(page, 'Sức khỏe');
   const health = page.getByRole('region', { name: 'Sức khỏe' });
@@ -145,7 +145,7 @@ test('AC-039 Veterinarian clears the new horse, Head Trainer plans, schedules, s
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
   // Head Trainer: plan, activate, schedule today, start, end.
-  await signIn(page, trainer.username, trainer.password);
+  await signIn(page, trainer.email, trainer.password);
   await openHorse(page);
   await openTile(page, 'Giáo án huấn luyện');
   await page.getByRole('link', { name: 'Lập giáo án mới' }).click();
@@ -194,9 +194,11 @@ test('AC-039 Veterinarian clears the new horse, Head Trainer plans, schedules, s
 });
 
 test('AC-103 Groom reports an incident with a photo; Veterinarian opens and closes it', async ({ page }) => {
-  await signIn(page, groom.username, groom.password);
+  await signIn(page, groom.email, groom.password);
   await expect(page.getByRole('link', { name: 'Ngựa', exact: true })).toHaveCount(0);
-  await pick(page, page.getByRole('form', { name: 'Gửi báo cáo' }), 'Ngựa', horseName);
+  // The page opens on the list; a new report is written in a popup (AC-444).
+  await page.getByRole('button', { name: 'Báo cáo mới' }).click();
+  await pick(page, page.getByRole('dialog').getByRole('form', { name: 'Gửi báo cáo' }), 'Ngựa', horseName);
   await page.getByLabel(/^Mô tả sự cố/).fill('Ngựa bỏ ăn từ sáng');
   const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(512)]);
   await page.getByLabel(/^Ảnh/).setInputFiles({ name: 'bua-an.jpg', mimeType: 'image/jpeg', buffer: jpeg });
@@ -205,7 +207,7 @@ test('AC-103 Groom reports an incident with a photo; Veterinarian opens and clos
   await expect(mine.getByText('Mới', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
-  await signIn(page, vet.username, vet.password);
+  await signIn(page, vet.email, vet.password);
   await page.getByRole('link', { name: 'Sự cố' }).click();
   const row = page.getByRole('row').filter({ hasText: 'Ngựa bỏ ăn từ sáng' }).filter({ hasText: horseName });
   await row.getByRole('button', { name: 'Mở' }).click();
@@ -218,7 +220,7 @@ test('AC-103 Groom reports an incident with a photo; Veterinarian opens and clos
   await expect(row.getByText('Đã xử lý')).toBeVisible();
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
-  await signIn(page, groom.username, groom.password);
+  await signIn(page, groom.email, groom.password);
   const after = page.getByRole('row').filter({ hasText: 'Ngựa bỏ ăn từ sáng' }).filter({ hasText: horseName });
   await expect(after.getByText('Đã xử lý')).toBeVisible();
 });
@@ -229,7 +231,7 @@ test.describe('injury marks on the 3D model', () => {
   // (ui.spec.ts runs beside this file), so the 60 s default is too tight. No assertion changes.
   test.describe.configure({ timeout: 180_000 });
   test('AC-126 AC-127 AC-135 AC-142 Veterinarian marks a region and follows recovery; Head Trainer reads only', async ({ page }) => {
-    await signIn(page, vet.username, vet.password);
+    await signIn(page, vet.email, vet.password);
     await page.getByRole('link', { name: 'Ngựa' }).click();
     await openHorse(page);
     await openTile(page, 'Hồ sơ khám bệnh');
@@ -284,7 +286,7 @@ test.describe('injury marks on the 3D model', () => {
     await expect(item).toContainText('Bắt đầu đi bộ nhẹ');
 
     await page.getByRole('button', { name: 'Đăng xuất' }).click();
-    await signIn(page, trainer.username, trainer.password);
+    await signIn(page, trainer.email, trainer.password);
     await page.getByRole('link', { name: 'Ngựa' }).click();
     await openHorse(page);
     await page.getByRole('link', { name: 'Dấu chấn thương trên mô hình 3D' }).click();
@@ -300,7 +302,7 @@ test('AC-147 AC-160 Head Trainer uploads a trial-run video; the Owner plays it',
   const video = readFileSync(join(__dirname, 'fixtures', 'chay-thu.mp4'));
   const today = clubDate();
 
-  await signIn(page, trainer.username, trainer.password);
+  await signIn(page, trainer.email, trainer.password);
   await page.getByRole('link', { name: 'Ngựa' }).click();
   await openHorse(page);
   await openTile(page, 'Giáo án huấn luyện');
@@ -333,7 +335,7 @@ test('AC-147 AC-160 Head Trainer uploads a trial-run video; the Owner plays it',
   await expect(panel.getByLabel('chay-thu.mp4')).toBeVisible();
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
-  await signIn(page, owner.username, owner.password);
+  await signIn(page, owner.email, owner.password);
   await openHorse(page);
   await openTile(page, 'Giáo án huấn luyện');
   await page.getByRole('button', { name: /Xem video \(1 video\)/ }).click();
@@ -348,7 +350,7 @@ test('AC-147 AC-160 Head Trainer uploads a trial-run video; the Owner plays it',
 test('AC-180 Head Trainer assigns a session to the Groom; the Groom sees it read-only', async ({ page }) => {
   const tomorrow = clubDate(1);
 
-  await signIn(page, trainer.username, trainer.password);
+  await signIn(page, trainer.email, trainer.password);
   await page.getByRole('link', { name: 'Ngựa' }).click();
   await openHorse(page);
   await openTile(page, 'Giáo án huấn luyện');
@@ -362,7 +364,7 @@ test('AC-180 Head Trainer assigns a session to the Groom; the Groom sees it read
   await expect(page.getByRole('link', { name: tomorrow })).toBeVisible();
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
-  await signIn(page, groom.username, groom.password);
+  await signIn(page, groom.email, groom.password);
   await page.getByRole('link', { name: 'Buổi tập được giao' }).click();
   // The Groom now also holds today's sessions of the earlier scenarios (BR-134): pick tomorrow's row.
   const row = page.getByRole('row').filter({ hasText: horseName }).filter({ hasText: tomorrow });
@@ -380,12 +382,12 @@ test('AC-180 Head Trainer assigns a session to the Groom; the Groom sees it read
 // Task 3.1 of add-responsible-person-handover: AC-185 and AC-186 end to end (BR-115, BR-116, BR-118, DEC-041).
 test('AC-185 AC-186 Head Trainer hands the session over; both Grooms are told; the new one confirms', async ({ page }) => {
   const tomorrow = clubDate(1);
-  const groom2 = { username: `groom2-${suffix}`, password: 'groom2-password-1', name: `Groom hai ${suffix}` };
-  await signIn(page, admin.username, admin.password);
+  const groom2 = { email: `groom2-${suffix}@racehorse.example`, password: 'groom2-password-1', name: `Groom hai ${suffix}` };
+  await signIn(page, admin.email, admin.password);
   await createAccount(page, groom2, 'GROOM');
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
-  await signIn(page, trainer.username, trainer.password);
+  await signIn(page, trainer.email, trainer.password);
   await page.getByRole('link', { name: 'Ngựa' }).click();
   await openHorse(page);
   await openTile(page, 'Giáo án huấn luyện');
@@ -399,7 +401,7 @@ test('AC-185 AC-186 Head Trainer hands the session over; both Grooms are told; t
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
   // The previous Groom is told and no longer sees the session.
-  await signIn(page, groom.username, groom.password);
+  await signIn(page, groom.email, groom.password);
   await page.getByRole('button', { name: /^Thông báo/ }).click();
   await expect(page.getByText(new RegExp(`Bạn không còn phụ trách buổi tập Chạy nước kiệu của ngựa "${horseName}"`))).toBeVisible();
   await page.getByRole('link', { name: 'Buổi tập được giao' }).click();
@@ -408,7 +410,7 @@ test('AC-185 AC-186 Head Trainer hands the session over; both Grooms are told; t
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
   // The new Groom is told and confirms "Đã nhận".
-  await signIn(page, groom2.username, groom2.password);
+  await signIn(page, groom2.email, groom2.password);
   await page.getByRole('button', { name: /^Thông báo/ }).click();
   await expect(page.getByText(new RegExp(`Bạn được giao phụ trách buổi tập Chạy nước kiệu của ngựa "${horseName}"`))).toBeVisible();
   await page.getByRole('link', { name: 'Buổi tập được giao' }).click();
@@ -422,7 +424,7 @@ test('AC-185 AC-186 Head Trainer hands the session over; both Grooms are told; t
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
   // The Head Trainer sees "Đã nhận" next to the session.
-  await signIn(page, trainer.username, trainer.password);
+  await signIn(page, trainer.email, trainer.password);
   await page.getByRole('link', { name: 'Ngựa' }).click();
   await openHorse(page);
   await openTile(page, 'Giáo án huấn luyện');
@@ -435,7 +437,7 @@ test('AC-185 AC-186 Head Trainer hands the session over; both Grooms are told; t
 test('AC-197 a session overlapping another of the same horse is refused, naming it', async ({ page }) => {
   const tomorrow = clubDate(1);
 
-  await signIn(page, trainer.username, trainer.password);
+  await signIn(page, trainer.email, trainer.password);
   await page.getByRole('link', { name: 'Ngựa' }).click();
   await openHorse(page);
   await openTile(page, 'Giáo án huấn luyện');
@@ -457,7 +459,7 @@ test('AC-245 AC-255 AC-257 the Veterinarian composes a ration; the Groom and the
   const oats = `Yến mạch ${suffix}`;
 
   // The Club Manager adds a feed item to the catalog.
-  await signIn(page, admin.username, admin.password);
+  await signIn(page, admin.email, admin.password);
   await page.goto('/supplies');
   await page.getByRole('button', { name: 'Thêm vật tư' }).click();
   // The page filter and the form both carry the label "Loại": the form lives in the dialog.
@@ -474,7 +476,7 @@ test('AC-245 AC-255 AC-257 the Veterinarian composes a ration; the Groom and the
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
   // The Veterinarian composes the ration.
-  await signIn(page, vet.username, vet.password);
+  await signIn(page, vet.email, vet.password);
   await page.getByRole('link', { name: 'Ngựa' }).click();
   await openHorse(page);
   await page.getByRole('link', { name: 'Khẩu phần ăn' }).click();
@@ -491,14 +493,14 @@ test('AC-245 AC-255 AC-257 the Veterinarian composes a ration; the Groom and the
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
   // The Groom reads it read-only, beside the chore "Cho ăn".
-  await signIn(page, groom.username, groom.password);
+  await signIn(page, groom.email, groom.password);
   await page.getByRole('link', { name: 'Việc hằng ngày' }).click();
   await page.getByPlaceholder(/^Tìm theo tên ngựa/).fill(horseName);
   await expect(page.getByText(new RegExp(`06:00 Bữa sáng: ${oats} 2.5 kg`))).toBeVisible();
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
   // The Owner reads the current ration of the own horse, without an editor.
-  await signIn(page, owner.username, owner.password);
+  await signIn(page, owner.email, owner.password);
   await page.getByRole('link', { name: 'Ngựa' }).click();
   await openHorse(page);
   await page.getByRole('link', { name: 'Khẩu phần ăn' }).click();
@@ -509,15 +511,15 @@ test('AC-245 AC-255 AC-257 the Veterinarian composes a ration; the Groom and the
 // BR-191: an ended session returns the person to sign-in, and sign-in lands on a page the role may open.
 test('AC-279 AC-280 AC-282 an ended session returns to sign-in; sign-in lands on a page the role may open', async ({ page }) => {
   const expired = 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.';
-  const form = async (username: string, password: string) => {
-    // exact: the accounts table has a sort button labelled "Sắp xếp theo Tên đăng nhập" that can still be on screen.
-    await page.getByLabel('Tên đăng nhập', { exact: true }).fill(username);
+  const form = async (email: string, password: string) => {
+    // exact: the accounts table has a sort button labelled "Sắp xếp theo Email" that can still be on screen.
+    await page.getByLabel('Email', { exact: true }).fill(email);
     await page.getByLabel('Mật khẩu', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Đăng nhập' }).click();
   };
 
   // AC-279 and AC-280: the session cookie is lost while the Club Manager reads the audit log.
-  await signIn(page, admin.username, admin.password);
+  await signIn(page, admin.email, admin.password);
   await page.getByRole('link', { name: 'Tài khoản' }).click();
   await page.context().clearCookies();
   // Either this click or the page's own background refresh is the first call refused; both end the session.
@@ -525,7 +527,7 @@ test('AC-279 AC-280 AC-282 an ended session returns to sign-in; sign-in lands on
   await expect(page.getByText(expired)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Đăng xuất' })).toHaveCount(0);
   const left = new URL(page.url()).pathname;
-  await form(admin.username, admin.password);
+  await form(admin.email, admin.password);
   await page.locator('aside').first().waitFor({ state: 'attached', timeout: 15_000 });
   await expect(page).toHaveURL(new RegExp(`${left}$`));
   await expect(page.getByText(expired)).toHaveCount(0);
@@ -533,7 +535,7 @@ test('AC-279 AC-280 AC-282 an ended session returns to sign-in; sign-in lands on
   // AC-280: the Owner signs in on the screen the Club Manager left (no reload): the home page, no refusal.
   await page.getByRole('link', { name: 'Tài khoản' }).click();
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
-  await form(owner.username, owner.password);
+  await form(owner.email, owner.password);
   await page.locator('aside').first().waitFor({ state: 'attached', timeout: 15_000 });
   await expect(page).toHaveURL(/\/horses$/);
   await expect(page.getByText('Bạn không có quyền thực hiện thao tác này.')).toHaveCount(0);
@@ -541,7 +543,7 @@ test('AC-279 AC-280 AC-282 an ended session returns to sign-in; sign-in lands on
   // AC-282: with no session an old link shows no data, only sign-in.
   await page.context().clearCookies();
   await page.goto('/horses');
-  await expect(page.getByLabel('Tên đăng nhập', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Email', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: horseName })).toHaveCount(0);
 });
 
@@ -551,7 +553,7 @@ test('AC-279 AC-280 AC-282 an ended session returns to sign-in; sign-in lands on
 test('AC-352 AC-353 AC-360 the Club Manager prices an examination; the Veterinarian never sees the amount; the Owner reads the charge', async ({ page }) => {
   const typeName = `Khám e2e ${suffix}`;
 
-  await signIn(page, admin.username, admin.password);
+  await signIn(page, admin.email, admin.password);
   await page.getByRole('link', { name: 'Chi phí' }).click();
   await page.getByRole('button', { name: 'Bảng giá' }).click();
   await page.getByLabel('Tên loại phí').fill(typeName);
@@ -567,7 +569,7 @@ test('AC-352 AC-353 AC-360 the Club Manager prices an examination; the Veterinar
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
   // The Veterinarian chooses the type by name; no amount is on the page.
-  await signIn(page, vet.username, vet.password);
+  await signIn(page, vet.email, vet.password);
   await page.getByRole('link', { name: 'Ngựa' }).click();
   await openHorse(page);
   await openTile(page, 'Hồ sơ khám bệnh');
@@ -583,18 +585,18 @@ test('AC-352 AC-353 AC-360 the Club Manager prices an examination; the Veterinar
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
   // The Owner reads the charge on the cost page; the Head Trainer has no such page.
-  await signIn(page, owner.username, owner.password);
+  await signIn(page, owner.email, owner.password);
   await page.getByRole('link', { name: 'Chi phí' }).click();
   await expect(page.getByRole('heading', { name: horseName })).toBeVisible();
   await expect(page.getByTestId('statement')).toContainText('Phí khám và điều trị');
   await expect(page.getByTestId('statement')).toContainText('200.000');
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
-  await signIn(page, trainer.username, trainer.password);
+  await signIn(page, trainer.email, trainer.password);
   await expect(page.getByRole('link', { name: 'Chi phí' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
   // The type is switched off again so later examinations need no fee type.
-  await signIn(page, admin.username, admin.password);
+  await signIn(page, admin.email, admin.password);
   await page.getByRole('link', { name: 'Chi phí' }).click();
   await page.getByRole('button', { name: 'Bảng giá' }).click();
   await page.getByRole('row', { name: new RegExp(typeName) }).getByRole('button', { name: 'Ngừng dùng' }).click();
@@ -610,7 +612,7 @@ test('AC-388 AC-389 AC-392 the Club Manager adds, uses, renames and deactivates 
   const unit = `thùng ${letters}`;
   const renamed = `kiện ${letters}`;
   const item = `Vật tư đơn vị ${suffix}`;
-  await signIn(page, admin.username, admin.password);
+  await signIn(page, admin.email, admin.password);
   await page.goto('/supplies');
 
   await page.getByRole('button', { name: 'Thêm đơn vị' }).click();
@@ -646,7 +648,7 @@ test('AC-388 AC-389 AC-392 the Club Manager adds, uses, renames and deactivates 
 test('AC-400 AC-401 AC-402 the Groom and the Head Trainer open their timetable by day and by week', async ({ page }) => {
   await ensurePeople();
   for (const who of [people.GROOM, people.HEAD_TRAINER]) {
-    await signIn(page, who.username, who.password);
+    await signIn(page, who.email, who.password);
     await page.locator('aside a[href="/timetable"]').first().click();
     await expect(page.getByRole('heading', { level: 1, name: 'Thời gian biểu' })).toBeVisible();
     await expect(page.locator('main section h2, main [role="alert"], main p').first()).toBeVisible();
@@ -659,18 +661,18 @@ test('AC-400 AC-401 AC-402 the Groom and the Head Trainer open their timetable b
 
 test('AC-400 AC-401 AC-402 a Groom with barn hours and a session sees both today and in the week; the Head Trainer sees the horse sessions', async ({ page }) => {
   // The Club Manager gives this run's Groom barn hours on every weekday (midday, clear of the sessions planned above).
-  await signIn(page, admin.username, admin.password);
+  await signIn(page, admin.email, admin.password);
   const csrf = (await page.context().cookies()).find((c) => c.name === 'XSRF-TOKEN')?.value ?? '';
   const headers = { 'X-XSRF-TOKEN': decodeURIComponent(csrf) };
-  const found = await page.request.get(`/api/accounts?q=${encodeURIComponent(groom.username)}`);
-  const id = ((await found.json()).items as { id: number; username: string }[]).find((a) => a.username === groom.username)?.id;
+  const found = await page.request.get(`/api/accounts?q=${encodeURIComponent(groom.email)}`);
+  const id = ((await found.json()).items as { id: number; email: string }[]).find((a) => a.email === groom.email)?.id;
   expect(id, 'the run Groom exists').toBeTruthy();
   const ranges = [1, 2, 3, 4, 5, 6, 7].map((weekday) => ({ weekday, start: '12:00', end: '13:00' }));
   const saved = await page.request.put(`/api/accounts/${id}/schedule`, { data: { ranges }, headers });
   expect(saved.ok(), await saved.text()).toBe(true);
   await page.getByRole('button', { name: 'Đăng xuất' }).first().click();
 
-  await signIn(page, groom.username, groom.password);
+  await signIn(page, groom.email, groom.password);
   await page.locator('aside a[href="/timetable"]').first().click();
   const today = page.locator('main section').filter({ hasText: '(Hôm nay)' });
   await expect(today).toContainText('Giờ ở chuồng: 12:00–13:00');
@@ -680,7 +682,7 @@ test('AC-400 AC-401 AC-402 a Groom with barn hours and a session sees both today
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.getByRole('button', { name: 'Đăng xuất' }).first().click();
 
-  await signIn(page, trainer.username, trainer.password);
+  await signIn(page, trainer.email, trainer.password);
   await page.locator('aside a[href="/timetable"]').first().click();
   await expect(page.locator('main section').filter({ hasText: '(Hôm nay)' }).getByRole('link').first()).toBeVisible();
 });

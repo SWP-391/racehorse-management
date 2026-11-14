@@ -17,6 +17,11 @@ export function required(v: unknown): Check {
   return blank(v) ? vi.validation.required : null;
 }
 
+/** The shape of an email the service accepts (BR-211): `local@domain.tld`, no spaces. The service has the last word. */
+export function emailShape(v: string | null | undefined): Check {
+  return v && !/^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/.test(v.trim()) ? vi.validation.email : null;
+}
+
 /** At most `n` characters; the same limit the service applies to the field. */
 export function maxLength(v: string | null | undefined, n: number): Check {
   return v && v.length > n ? vi.validation.tooLong(n) : null;

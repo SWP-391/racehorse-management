@@ -59,7 +59,20 @@ test('AC-448 the billing overview is first, charts only, and the four cards have
 test('AC-451 "Xem" on a cost row opens the statement in a popup', async ({ page }) => {
   await signIn(page, admin);
   await page.goto('/billing?tab=statements');
-  await page.getByRole('button', { name: /^Xem / }).first().click();
+  // The statements of the month on show: choose the first month that has an owner with a cost (a stack has data in some months only).
+  const month = page.getByLabel('Tháng');
+  await expect(month.locator('option').nth(1)).toBeAttached({ timeout: 30_000 });
+  const values = await month.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value).filter((v) => v !== 'all'));
+  const eye = page.getByRole('button', { name: /^Xem / }).first();
+  let found = false;
+  // The newest month comes first and holds the running month's rows; allow time for them to load on a slow link.
+  for (const v of values) {
+    if (found) break;
+    await month.selectOption(v);
+    found = await eye.waitFor({ state: 'visible', timeout: 15_000 }).then(() => true, () => false);
+  }
+  expect(found, 'some month has a cost statement row').toBe(true);
+  await eye.click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('Tổng cộng')).toBeVisible();

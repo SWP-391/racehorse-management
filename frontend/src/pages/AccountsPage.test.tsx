@@ -12,6 +12,7 @@ vitest.mock('../api/api', () => ({
     accounts: vitest.fn(),
     createAccount: vitest.fn(),
     changeRole: vitest.fn(),
+    changeEmail: vitest.fn(),
     deactivate: vitest.fn(),
     groomSchedule: vitest.fn(),
     setGroomSchedule: vitest.fn(),
@@ -22,9 +23,9 @@ vitest.mock('../api/api', () => ({
   },
 }));
 
-const account = { id: 7, username: 'ht', displayName: 'Huấn luyện viên A', role: 'HEAD_TRAINER', active: true, createdAt: '' };
+const account = { id: 7, email: 'ht@racehorse.example', displayName: 'Huấn luyện viên A', role: 'HEAD_TRAINER', active: true, createdAt: '' };
 
-const groom = { ...account, id: 8, username: 'groom', displayName: 'Groom An', role: 'GROOM' };
+const groom = { ...account, id: 8, email: 'groom@racehorse.example', displayName: 'Groom An', role: 'GROOM' };
 
 beforeEach(() => {
   vitest.mocked(api.accounts).mockResolvedValue(pageOf([account]) as never);
@@ -50,7 +51,7 @@ describe('account administration (task 7.2, BR-090)', () => {
       new ApiError(400, 'ONE_ROLE_ONLY', 'Mỗi người chỉ có một vai trò.', { roles: 'Mỗi người chỉ có một vai trò.' }),
     );
     renderAs('CLUB_MANAGER', <AccountsPage />);
-    await userEvent.type(screen.getByLabelText(/^Tên đăng nhập/), 'new');
+    await userEvent.type(screen.getByLabelText(/^Email/), 'new@racehorse.example');
     await userEvent.type(screen.getByLabelText(/^Họ tên/), 'Người mới');
     await userEvent.type(screen.getByLabelText(/^Mật khẩu/), 'password-123');
     await userEvent.selectOptions(screen.getByLabelText(/^Vai trò/), 'HEAD_TRAINER');
@@ -63,13 +64,25 @@ describe('account administration (task 7.2, BR-090)', () => {
     renderAs('CLUB_MANAGER', <AccountsPage />);
     await userEvent.type(screen.getByLabelText(/^Mật khẩu/), 'short');
     await userEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
-    expect(screen.getByLabelText(/^Tên đăng nhập/)).toHaveAccessibleDescription('Bắt buộc nhập.');
+    expect(screen.getByLabelText(/^Email/)).toHaveAccessibleDescription('Bắt buộc nhập.');
     expect(screen.getByLabelText(/^Họ tên/)).toHaveAccessibleDescription('Bắt buộc nhập.');
     expect(screen.getByLabelText(/^Mật khẩu/)).toHaveAccessibleDescription('Mật khẩu cần 8 ký tự trở lên.');
     expect(screen.getByLabelText(/^Vai trò/)).toHaveAttribute('aria-invalid', 'true');
-    expect(screen.getByLabelText(/^Tên đăng nhập/)).toHaveFocus();
-    expect(screen.getByLabelText(/^Tên đăng nhập/)).toHaveAttribute('maxlength', '100');
+    expect(screen.getByLabelText(/^Email/)).toHaveFocus();
+    expect(screen.getByLabelText(/^Email/)).toHaveAttribute('maxlength', '254');
     expect(screen.getByLabelText(/^Họ tên/)).toHaveAttribute('maxlength', '200');
+    expect(api.createAccount).not.toHaveBeenCalled();
+  });
+
+  test('AC-459 an email that is not an email is refused on the field and nothing is sent', async () => {
+    vitest.mocked(api.createAccount).mockClear();
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    await userEvent.type(screen.getByLabelText(/^Email/), 'an.le@');
+    await userEvent.type(screen.getByLabelText(/^Họ tên/), 'An Lê');
+    await userEvent.type(screen.getByLabelText(/^Mật khẩu/), 'password-123');
+    await userEvent.selectOptions(screen.getByLabelText(/^Vai trò/), 'GROOM');
+    await userEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
+    expect(screen.getByLabelText(/^Email/)).toHaveAccessibleDescription('Email không hợp lệ.');
     expect(api.createAccount).not.toHaveBeenCalled();
   });
 
@@ -92,12 +105,12 @@ describe('account administration (task 7.2, BR-090)', () => {
   });
 
   test('P06 a Club Manager row shows the role as a read-only badge with a hint, another row keeps its selector', async () => {
-    const manager = { ...account, id: 1, username: 'admin', displayName: 'Quản lý CLB', role: 'CLUB_MANAGER' };
+    const manager = { ...account, id: 1, email: 'admin@racehorse.example', displayName: 'Quản lý CLB', role: 'CLUB_MANAGER' };
     vitest.mocked(api.accounts).mockResolvedValue(pageOf([manager, account]) as never);
     renderAs('CLUB_MANAGER', <AccountsPage />);
     expect(await screen.findByText('Quản lý CLB là vai trò cao nhất, không thể đổi.')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Đổi vai trò admin')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Đổi vai trò ht')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Đổi vai trò admin@racehorse.example')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Đổi vai trò ht@racehorse.example')).toBeInTheDocument();
   });
 
   test('P06 a refused role change shows the service message', async () => {
@@ -105,7 +118,7 @@ describe('account administration (task 7.2, BR-090)', () => {
       new ApiError(400, 'CLUB_MANAGER_ROLE_LOCKED', 'Không thể đổi vai trò của tài khoản Quản lý CLB.'),
     );
     renderAs('CLUB_MANAGER', <AccountsPage />);
-    await userEvent.selectOptions(await screen.findByLabelText('Đổi vai trò ht'), 'GROOM');
+    await userEvent.selectOptions(await screen.findByLabelText('Đổi vai trò ht@racehorse.example'), 'GROOM');
     expect(await screen.findByRole('alert')).toHaveTextContent('Không thể đổi vai trò của tài khoản Quản lý CLB.');
   });
 
@@ -118,7 +131,7 @@ describe('account administration (task 7.2, BR-090)', () => {
 
 describe('Groom barn hours and leave (BR-166, BR-167)', () => {
   async function fillGroom() {
-    await userEvent.type(screen.getByLabelText(/^Tên đăng nhập/), 'groom');
+    await userEvent.type(screen.getByLabelText(/^Email/), 'groom@racehorse.example');
     await userEvent.type(screen.getByLabelText(/^Họ tên/), 'Groom An');
     await userEvent.type(screen.getByLabelText(/^Mật khẩu/), 'password-123');
     await userEvent.selectOptions(screen.getByLabelText(/^Vai trò/), 'GROOM');
@@ -220,5 +233,66 @@ describe('Groom barn hours and leave (BR-166, BR-167)', () => {
     await userEvent.type(within(dialog).getByLabelText('Ngày nghỉ'), '2026-12-01');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Ghi nghỉ phép' }));
     expect(await within(dialog).findByText('Đã ghi nghỉ phép ngày 01/12/2026.')).toBeInTheDocument();
+  });
+});
+
+describe('the email of an account (BR-212, AC-468, AC-484 to AC-486)', () => {
+  const noEmail = { ...account, id: 9, email: null, displayName: 'Cũ Bình' };
+
+  test('AC-468 an account without an email is marked and the Club Manager can enter one', async () => {
+    vitest.mocked(api.accounts).mockResolvedValue(pageOf([noEmail]) as never);
+    vitest.mocked(api.changeEmail).mockReset().mockResolvedValue({ ...noEmail, email: 'binh@racehorse.example' } as never);
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    expect(await screen.findByText('Chưa có email')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Nhập email Cũ Bình' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByLabelText(/^Lý do/)).not.toBeInTheDocument();
+    await userEvent.type(within(dialog).getByLabelText(/^Email/), 'binh@racehorse.example');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu email' }));
+    expect(api.changeEmail).toHaveBeenCalledWith(9, { email: 'binh@racehorse.example', reason: undefined });
+  });
+
+  test('AC-484 a correction sends the new email with the reason', async () => {
+    vitest.mocked(api.changeEmail).mockReset().mockResolvedValue(account as never);
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Sửa email Huấn luyện viên A' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText(/^Email/), 'dung@racehorse.example');
+    await userEvent.type(within(dialog).getByLabelText(/^Lý do/), 'gõ nhầm khi tạo');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu email' }));
+    expect(api.changeEmail).toHaveBeenCalledWith(7, { email: 'dung@racehorse.example', reason: 'gõ nhầm khi tạo' });
+  });
+
+  test('AC-485 a correction without a reason is refused on the field and nothing is sent', async () => {
+    vitest.mocked(api.changeEmail).mockReset();
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Sửa email Huấn luyện viên A' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText(/^Email/), 'dung@racehorse.example');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu email' }));
+    expect(within(dialog).getByLabelText(/^Lý do/)).toHaveAccessibleDescription('Bắt buộc nhập lý do.');
+    expect(api.changeEmail).not.toHaveBeenCalled();
+  });
+
+  test('a refusal of the service is shown on the email field', async () => {
+    vitest.mocked(api.changeEmail).mockReset().mockRejectedValue(
+      new ApiError(409, 'DUPLICATE_EMAIL', 'Email đã được dùng.', { email: 'Email đã được dùng.' }),
+    );
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Sửa email Huấn luyện viên A' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText(/^Email/), 'trung@racehorse.example');
+    await userEvent.type(within(dialog).getByLabelText(/^Lý do/), 'sửa');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu email' }));
+    expect(await within(dialog).findByLabelText(/^Email/)).toHaveAccessibleDescription('Email đã được dùng.');
+  });
+
+  test('AC-486 the signed-in person has no email button on their own row, the other rows do', async () => {
+    const own = { ...account, id: 1, email: 'admin@racehorse.example', displayName: 'Quản lý CLB', role: 'CLUB_MANAGER' };
+    vitest.mocked(api.accounts).mockResolvedValue(pageOf([own, account]) as never);
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    await screen.findByText('admin@racehorse.example');
+    expect(screen.queryByRole('button', { name: 'Sửa email Quản lý CLB' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sửa email Huấn luyện viên A' })).toBeInTheDocument();
   });
 });

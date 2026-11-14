@@ -199,7 +199,7 @@ test.describe('forms that need data refuse invalid input before sending', () => 
     const sent = writes(page);
     await page.goto('/accounts');
     // The list is paged and test accounts pile up: search for the Groom instead of hoping one is on the first page.
-    await page.getByPlaceholder('Tìm theo họ tên hoặc tên đăng nhập').fill(people.GROOM.username);
+    await page.getByPlaceholder('Tìm theo họ tên hoặc email').fill(people.GROOM.email);
     await page.getByRole('button', { name: /^Ghi nghỉ phép cho/ }).first().click();
     const dialog = page.getByRole('dialog');
     await dialog.getByLabel(/^Ngày nghỉ/).fill(clubDate(-3));
@@ -349,10 +349,10 @@ test.describe('Club Manager forms refuse invalid input before sending', () => {
     expect(sent.filter((s) => s.includes('/api/areas') || s.includes('/api/barn')), 'nothing sent').toEqual([]);
   });
 
-  test('accounts: username and name length, and a password shorter than the minimum, are refused on the field', async ({ page }) => {
+  test('accounts: email and name length, and a password shorter than the minimum, are refused on the field', async ({ page }) => {
     const sent = writes(page);
     await page.goto('/accounts');
-    await page.getByLabel(/^Tên đăng nhập/).fill('x');
+    await page.getByLabel(/^Email/).fill('x');
     await page.getByLabel(/^Họ tên/).fill('');
     await page.getByLabel(/^Mật khẩu/).fill('short');
     await page.getByRole('button', { name: 'Tạo tài khoản' }).click();

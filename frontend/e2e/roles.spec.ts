@@ -82,10 +82,10 @@ for (const who of everyone) {
 test('a wrong password stays on sign-in with a message and no blank page', async ({ page }) => {
   const problems = watch(page, [...PROBE, /^401 \/api\/auth\/login$/]);
   await page.goto('/');
-  await page.getByLabel('Tên đăng nhập').fill(admin.username);
+  await page.getByLabel('Email').fill(admin.email);
   await page.getByLabel('Mật khẩu').fill('not-the-password');
   await page.getByRole('button', { name: 'Đăng nhập' }).click();
-  await expect(page.getByRole('alert')).toContainText('Sai tên đăng nhập hoặc mật khẩu');
+  await expect(page.getByRole('alert')).toContainText('Sai email hoặc mật khẩu');
   expect(await blank(page)).toBe(false);
   expect(problems).toEqual([]);
 });
@@ -95,8 +95,8 @@ test('role switch without reload lands on the new role home, never on an access 
   await page.goto('/progress');
   await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Đăng xuất' }).first().click();
-  await expect(page.getByLabel('Tên đăng nhập')).toBeVisible();
-  await page.getByLabel('Tên đăng nhập').fill(people.GROOM.username);
+  await expect(page.getByLabel('Email')).toBeVisible();
+  await page.getByLabel('Email').fill(people.GROOM.email);
   await page.getByLabel('Mật khẩu').fill(people.GROOM.password);
   await page.getByRole('button', { name: 'Đăng nhập' }).click();
   await settled(page);
@@ -111,9 +111,9 @@ test('an ended session returns to sign-in with a message, and the same person la
   await settled(page);
   await context.clearCookies();
   await page.locator('aside a[href="/health"]').first().click();
-  await expect(page.getByLabel('Tên đăng nhập')).toBeVisible();
+  await expect(page.getByLabel('Email')).toBeVisible();
   await expect(page.getByText('Phiên đăng nhập đã hết hạn')).toBeVisible();
-  await page.getByLabel('Tên đăng nhập').fill(people.HEAD_TRAINER.username);
+  await page.getByLabel('Email').fill(people.HEAD_TRAINER.email);
   await page.getByLabel('Mật khẩu').fill(people.HEAD_TRAINER.password);
   await page.getByRole('button', { name: 'Đăng nhập' }).click();
   await settled(page);
@@ -123,7 +123,7 @@ test('an ended session returns to sign-in with a message, and the same person la
 
 test('a deep link while signed out opens that page after sign-in when the role may', async ({ page }) => {
   await page.goto('/health');
-  await page.getByLabel('Tên đăng nhập').fill(people.HEAD_TRAINER.username);
+  await page.getByLabel('Email').fill(people.HEAD_TRAINER.email);
   await page.getByLabel('Mật khẩu').fill(people.HEAD_TRAINER.password);
   await page.getByRole('button', { name: 'Đăng nhập' }).click();
   await settled(page);
@@ -133,7 +133,7 @@ test('a deep link while signed out opens that page after sign-in when the role m
 
 test('a deep link to a page the role may not open falls back to the role home', async ({ page }) => {
   await page.goto('/accounts');
-  await page.getByLabel('Tên đăng nhập').fill(people.GROOM.username);
+  await page.getByLabel('Email').fill(people.GROOM.email);
   await page.getByLabel('Mật khẩu').fill(people.GROOM.password);
   await page.getByRole('button', { name: 'Đăng nhập' }).click();
   await settled(page);
@@ -157,7 +157,7 @@ test.describe('when the service misbehaves the page is never blank', () => {
     await page.goto('/');
     await settled(page);
     expect(await blank(page)).toBe(false);
-    await expect(page.getByLabel('Tên đăng nhập')).toBeVisible();
+    await expect(page.getByLabel('Email')).toBeVisible();
     // TECH-200: an answer that is not JSON is an ApiError, not an uncaught SyntaxError.
     expect(errors).toEqual([]);
   });

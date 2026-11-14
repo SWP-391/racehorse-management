@@ -1,13 +1,22 @@
 import appSource from '../App.tsx?raw';
 import { meAs } from '../test/render';
-import { canOpen, homeFor, ROUTE_ACCESS, SECTIONS } from './access';
+import { canOpen, homeFor, PUBLIC_ROUTES, ROUTE_ACCESS, SECTIONS } from './access';
 
 describe('route access table (BR-191, BR-091, TECH-127)', () => {
   test('every route declared in App.tsx has an access entry', () => {
-    const declared = [...appSource.matchAll(/<Route\s+path="([^"]+)"/g)].map((m) => m[1]).filter((p) => p !== '*' && p !== '/none');
+    const declared = [...appSource.matchAll(/<Route\s+path="([^"]+)"/g)].map((m) => m[1]).filter((p) => p !== '*' && p !== '/none' && !PUBLIC_ROUTES.includes(p));
     expect(declared.length).toBeGreaterThan(15);
     const known = ROUTE_ACCESS.map((r) => r.path);
     expect(declared.filter((p) => !known.includes(p))).toEqual([]);
+  });
+
+  test('a public page is declared in App.tsx and no signed-in role opens it as a workspace page', () => {
+    for (const path of PUBLIC_ROUTES) {
+      expect(appSource).toContain(`path="${path}"`);
+      for (const role of ['HEAD_TRAINER', 'VETERINARIAN', 'GROOM', 'HORSE_OWNER', 'CLUB_MANAGER'] as const) {
+        expect(canOpen(meAs(role), path)).toBe(false);
+      }
+    }
   });
 
   test.each([

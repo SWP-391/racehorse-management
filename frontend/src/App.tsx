@@ -7,6 +7,7 @@ import type { Me } from './api/types';
 import Layout from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import { DetailSkeleton, EmptyState } from './components/ui/states';
 import { useDelayedFlag } from './hooks/useDelayedFlag';
 import { vi } from './i18n/vi';
@@ -74,7 +75,14 @@ function Landing({ to }: { to: string }) {
 function Routed() {
   const { me, loading, landing } = useAuth();
   if (loading) return <Splash />;
-  if (!me) return <LoginPage />;
+  if (!me) {
+    return (
+      <Routes>
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="*" element={<LoginPage />} />
+      </Routes>
+    );
+  }
   if (landing) return <Landing to={landing} />;
   const home = homeFor(me);
   return (

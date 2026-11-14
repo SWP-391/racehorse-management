@@ -109,7 +109,7 @@ const PERMISSIONS: Record<Role, Permission[]> = {
 };
 
 export function meAs(role: Role): Me {
-  return { id: 1, username: role.toLowerCase(), displayName: `Test ${role}`, role, permissions: PERMISSIONS[role] };
+  return { id: 1, email: `${role.toLowerCase()}@racehorse.example`, displayName: `Test ${role}`, role, permissions: PERMISSIONS[role] };
 }
 
 /** Renders a page as a signed-in user at a route; `path` is the route pattern, `at` the concrete URL. */

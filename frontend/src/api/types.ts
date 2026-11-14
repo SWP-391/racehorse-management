@@ -173,7 +173,7 @@ export interface Inbox extends Page<{ id: number; message: string; link: string 
 
 export interface Me {
   id: number;
-  username: string;
+  email: string;
   displayName: string;
   role: Role;
   permissions: Permission[];
@@ -181,7 +181,8 @@ export interface Me {
 
 export interface Account {
   id: number;
-  username: string;
+  /** Null for an account that has no email yet; the Club Manager enters it (BR-212). */
+  email: string | null;
   displayName: string;
   role: Role;
   active: boolean;

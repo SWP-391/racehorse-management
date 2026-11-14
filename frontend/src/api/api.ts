@@ -102,13 +102,22 @@ export type OptionKind = 'horses' | 'owners' | 'trainers' | 'grooms' | 'staff' |
 
 export const api = {
   me: () => request<Me>('GET', '/api/auth/me'),
-  login: (username: string, password: string) => request<Me>('POST', '/api/auth/login', { username, password }),
+  login: (email: string, password: string) => request<Me>('POST', '/api/auth/login', { email, password }),
+  /** Step 1 of the recovery of a forgotten password: the answer is the same for every email and never carries the code (BR-214). */
+  recoveryRequest: (email: string) =>
+    request<{ message: string; expiresInSeconds: number; resendAfterSeconds: number }>('POST', '/api/auth/recovery/request', { email }),
+  /** Step 2: the code from the mail and the new password (BR-216). */
+  recoveryConfirm: (input: { email: string; code: string; newPassword: string }) =>
+    request<void>('POST', '/api/auth/recovery/confirm', input),
   logout: () => request<void>('POST', '/api/auth/logout'),
 
   accounts: (query: ListQuery & { role?: Role; active?: boolean } = {}) =>
     request<Page<Account>>('GET', `/api/accounts${listQs(query)}`),
-  createAccount: (input: { username: string; displayName: string; password: string; roles: Role[]; schedule?: ScheduleRange[] }) =>
+  createAccount: (input: { email: string; displayName: string; password: string; roles: Role[]; schedule?: ScheduleRange[] }) =>
     request<Account>('POST', '/api/accounts', input),
+  /** Enters the missing email of an account, or corrects it with a reason (BR-212). */
+  changeEmail: (id: number, input: { email: string; reason?: string }) =>
+    request<Account>('PUT', `/api/accounts/${id}/email`, input),
   changeRole: (id: number, roles: Role[]) => request<Account>('PUT', `/api/accounts/${id}/roles`, { roles }),
   deactivate: (id: number) => request<Account>('POST', `/api/accounts/${id}/deactivate`),
 

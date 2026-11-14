@@ -33,7 +33,7 @@ class AuditLogTest extends ApiTest {
 
     private long createAccountAs(AccountPrincipal manager) throws Exception {
         return body(asJson(manager, post("/api/accounts"), Map.of(
-                "username", unique("user"), "displayName", "Người dùng", "password", PASSWORD,
+                "email", uniqueEmail("user"), "displayName", "Người dùng", "password", PASSWORD,
                 "roles", List.of("GROOM"))).andExpect(status().isCreated())).get("id").asLong();
     }
 

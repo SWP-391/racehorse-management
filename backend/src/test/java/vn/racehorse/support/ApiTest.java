@@ -66,10 +66,15 @@ public abstract class ApiTest extends IntegrationTest {
         return prefix + "-" + System.nanoTime() + "-" + SEQ.incrementAndGet();
     }
 
+    /** A valid, unique email on the reserved example domain. */
+    protected static String uniqueEmail(String prefix) {
+        return unique(prefix) + "@racehorse.example";
+    }
+
     /** Creates an active account directly in the database (test fixture, not under test). */
     protected AccountPrincipal account(Role role) {
-        String username = unique(role.name().toLowerCase());
-        UserAccount saved = accounts.save(new UserAccount(username, "Test " + username,
+        String email = uniqueEmail(role.name().toLowerCase());
+        UserAccount saved = accounts.save(new UserAccount(email, "Test " + email,
                 passwordEncoder.encode(PASSWORD), role, Instant.now()));
         return AccountPrincipal.of(saved);
     }

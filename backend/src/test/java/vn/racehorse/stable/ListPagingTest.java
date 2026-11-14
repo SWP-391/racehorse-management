@@ -40,7 +40,7 @@ class ListPagingTest extends StableTestBase {
     @Test
     void accountsPageAndSearchWithoutToneMarks() throws Exception {
         String name = unique("Đặng");
-        asJson(manager, post("/api/accounts"), Map.of("username", unique("dg"), "displayName", name + " Mạnh", "password", PASSWORD,
+        asJson(manager, post("/api/accounts"), Map.of("email", uniqueEmail("dg"), "displayName", name + " Mạnh", "password", PASSWORD,
                 "roles", java.util.List.of("GROOM"))).andExpect(status().isCreated());
         JsonNode found = page(manager, "/api/accounts", "q", name.toLowerCase().replace("đ", "d").replace("ặ", "a"), "role", "GROOM");
         assertThat(found.get("total").asInt()).isEqualTo(1);

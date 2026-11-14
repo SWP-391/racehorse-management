@@ -125,7 +125,11 @@ public enum Permission {
     /** PERM-051 Set service prices and close a billing month (BR-178, BR-180). */
     SET_PRICES_AND_CLOSE_MONTH("PERM-051", Role.CLUB_MANAGER),
     /** PERM-052 View cost statements and invoices (Owner: own horses only; BR-182). */
-    VIEW_BILLING("PERM-052", Role.HORSE_OWNER, Role.CLUB_MANAGER);
+    VIEW_BILLING("PERM-052", Role.HORSE_OWNER, Role.CLUB_MANAGER),
+    /** PERM-059 View the payment QR and payment status of an own invoice and pay it (BR-218, DEC-073). */
+    PAY_INVOICE("PERM-059", Role.HORSE_OWNER),
+    /** PERM-060 View received payments and unmatched transfers, assign an unmatched transfer with a reason (BR-222). */
+    MANAGE_PAYMENTS("PERM-060", Role.CLUB_MANAGER);
 
     private final String baId;
     private final Set<Role> allowed;

@@ -27,7 +27,7 @@ class RailwayConfigTest {
     @Test
     void D_15_theGuideListsEveryVariableTheServiceNeeds() throws Exception {
         String guide = Files.readString(ROOT.resolve("docs/TRIEN-KHAI-RAILWAY.md"));
-        for (String variable : new String[]{"DATABASE_URL", "BOOTSTRAP_USERNAME", "BOOTSTRAP_PASSWORD", "CLUB_TIME_ZONE",
+        for (String variable : new String[]{"DATABASE_URL", "BOOTSTRAP_EMAIL", "BOOTSTRAP_PASSWORD", "CLUB_TIME_ZONE",
                 "VIDEO_DIR", "RAILWAY_RUN_UID", "SESSION_COOKIE_SECURE", "FORWARD_HEADERS_STRATEGY", "SPRINGDOC_ENABLED",
                 "JAVA_TOOL_OPTIONS"}) {
             assertThat(guide).contains(variable);

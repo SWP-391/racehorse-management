@@ -14,10 +14,15 @@ import org.testcontainers.containers.PostgreSQLContainer;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import(TestClock.Config.class)
+@Import({TestClock.Config.class, RecordingRecoveryMailer.Config.class})
 @TestPropertySource(properties = {
-        "app.bootstrap.username=admin",
+        "app.bootstrap.email=admin@racehorse.example",
+        // The recovery mail is sent on the calling thread, so a test finds it as soon as the request returns.
+        "app.mail.async=false",
         "app.bootstrap.password=admin-test-password",
+        // The key SePay would send in "Authorization: Apikey <key>" (BR-225).
+        "app.payment.webhook-api-key=test-sepay-key",
+        "app.payment.simulated=true",
         "spring.main.allow-bean-definition-overriding=true",
         "app.jobs.enabled=false",
         "app.video.dir=${java.io.tmpdir}/racehorse-test-videos",

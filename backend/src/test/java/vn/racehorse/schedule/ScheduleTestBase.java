@@ -34,7 +34,7 @@ public abstract class ScheduleTestBase extends TrainingTestBase {
 
     protected ResultActions createGroom(AccountPrincipal who, List<Map<String, Object>> schedule) throws Exception {
         Map<String, Object> body = new HashMap<>();
-        body.put("username", unique("groom"));
+        body.put("email", uniqueEmail("groom"));
         body.put("displayName", "Groom " + System.nanoTime());
         body.put("password", PASSWORD);
         body.put("roles", List.of("GROOM"));

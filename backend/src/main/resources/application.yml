@@ -77,9 +77,23 @@ club:
 # First Club Manager account, created only when no Club Manager exists (TECH-006).
 app:
   bootstrap:
-    username: ${BOOTSTRAP_USERNAME:admin}
+    email: ${BOOTSTRAP_EMAIL:}
     password: ${BOOTSTRAP_PASSWORD:}
     display-name: ${BOOTSTRAP_DISPLAY_NAME:Quản lý CLB}
+  # The recovery code goes by email through the HTTPS API of Brevo (TECH-226). MAIL_FROM is a sender verified in Brevo.
+  mail:
+    from: ${MAIL_FROM:}
+    from-name: ${MAIL_FROM_NAME:Racehorse}
+    brevo-api-key: ${BREVO_API_KEY:}
+  # Payment of an invoice by bank transfer (DEC-073, TECH-234 to TECH-236). The key is what SePay sends as
+  # "Authorization: Apikey <key>"; while it is unset every notice is refused. Test mode labels payments "mô phỏng".
+  payment:
+    webhook-api-key: ${SEPAY_WEBHOOK_API_KEY:}
+    bank-code: ${SEPAY_BANK_CODE:VietinBank}
+    account-number: ${SEPAY_ACCOUNT_NUMBER:0000000001}
+    account-name: ${SEPAY_ACCOUNT_NAME:}
+    qr-base-url: ${SEPAY_QR_BASE_URL:https://vietqr.app/img}
+    simulated: ${SEPAY_TEST_MODE:true}
   # Trial-run video files, outside the database (TECH-005, TECH-052).
   video:
     dir: ${VIDEO_DIR:./data/videos}

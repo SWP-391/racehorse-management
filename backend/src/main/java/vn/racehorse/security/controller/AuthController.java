@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import vn.racehorse.account.EmailAddress;
 import vn.racehorse.common.exception.ApiException;
 import vn.racehorse.security.AccessGuard;
 import vn.racehorse.security.AccountPrincipal;
@@ -33,6 +34,8 @@ import vn.racehorse.security.dto.Me;
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
+
+    public static final String SIGN_IN_REFUSED = "Sai email hoặc mật khẩu, hoặc tài khoản đã bị vô hiệu hóa.";
 
     private final AuthenticationManager authenticationManager;
     private final SecurityContextRepository contextRepository;
@@ -58,11 +61,13 @@ public class AuthController {
                     HttpServletResponse response) {
         Authentication auth;
         try {
+            // An input that is not an email is just a refused sign-in, never a validation message (BR-213).
+            EmailAddress email = EmailAddress.tryParse(login.email())
+                    .orElseThrow(() -> new org.springframework.security.authentication.BadCredentialsException("email"));
             auth = authenticationManager.authenticate(
-                    UsernamePasswordAuthenticationToken.unauthenticated(login.username(), login.password()));
+                    UsernamePasswordAuthenticationToken.unauthenticated(email.value(), login.password()));
         } catch (AuthenticationException e) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS",
-                    "Sai tên đăng nhập hoặc mật khẩu, hoặc tài khoản đã bị vô hiệu hóa.");
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", SIGN_IN_REFUSED);
         }
         HttpSession existing = request.getSession(false);
         if (existing != null) {
@@ -90,6 +95,6 @@ public class AuthController {
     @GetMapping("/me")
     public Me me() {
         AccountPrincipal user = access.current();
-        return new Me(user.id(), user.username(), user.displayName(), user.role(), access.permissionsOf(user));
+        return new Me(user.id(), user.email(), user.displayName(), user.role(), access.permissionsOf(user));
     }
 }

@@ -9,14 +9,14 @@ import java.util.Optional;
 
 public interface UserAccountRepository extends JpaRepository<UserAccount, Long> {
 
-    Optional<UserAccount> findByUsername(String username);
+    Optional<UserAccount> findByEmail(String email);
 
     /** Locks one account row so concurrent role changes and deactivations of it take turns (TECH-121). */
     @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
     @org.springframework.data.jpa.repository.Query("select a from UserAccount a where a.id = :id")
     Optional<UserAccount> findByIdForUpdate(@org.springframework.data.repository.query.Param("id") Long id);
 
-    boolean existsByUsername(String username);
+    boolean existsByEmail(String email);
 
     boolean existsByRoleAndActiveTrue(Role role);
 

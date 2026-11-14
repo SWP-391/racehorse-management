@@ -17,6 +17,9 @@ public final class AuditActionLabels {
         Map.entry("ACCOUNT_DEACTIVATED", "Vô hiệu hóa tài khoản"),
         Map.entry("SESSION_AUTO_CLOSED", "Tự động đóng buổi tập"),
         Map.entry("ROLE_CHANGED", "Đổi vai trò"),
+        Map.entry("ACCOUNT_EMAIL_SET", "Đặt email"),
+        Map.entry("ACCOUNT_EMAIL_CORRECTED", "Sửa email"),
+        Map.entry("PASSWORD_RESET", "Đặt lại mật khẩu"),
         Map.entry("HORSE_REGISTERED", "Đăng ký ngựa"),
         Map.entry("HORSE_UPDATED", "Sửa hồ sơ ngựa"),
         Map.entry("HORSE_ARCHIVED", "Lưu trữ ngựa"),
@@ -95,7 +98,8 @@ public final class AuditActionLabels {
         Map.entry("BILLING_ADJUSTMENT_ADDED", "Thêm khoản điều chỉnh"),
         Map.entry("RESTOCK_PROPOSED", "Đề xuất bổ sung vật tư"),
         Map.entry("RESTOCK_APPROVED", "Duyệt đề xuất bổ sung"),
-        Map.entry("RESTOCK_REJECTED", "Từ chối đề xuất bổ sung"));
+        Map.entry("RESTOCK_REJECTED", "Từ chối đề xuất bổ sung"),
+        Map.entry("TRANSFER_ASSIGNED", "Gán khoản chuyển tiền cho hóa đơn"));
 
     /** The Vietnamese name of every audit target type (frontend `vi.audit.targets`). */
     public static final Map<String, String> TARGETS = Map.ofEntries(
@@ -112,7 +116,8 @@ public final class AuditActionLabels {
         Map.entry("RESTOCK_PROPOSAL", "Đề xuất bổ sung"),
         Map.entry("SERVICE_PRICE", "Bảng giá dịch vụ"),
         Map.entry("EXAM_FEE_TYPE", "Loại phí khám"),
-        Map.entry("BILLING_MONTH", "Chi phí chủ ngựa"));
+        Map.entry("BILLING_MONTH", "Chi phí chủ ngựa"),
+        Map.entry("INVOICE", "Hóa đơn"));
 
     /** The label of an action, or the code itself when it has none. */
     public static String of(String action) {

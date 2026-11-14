@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import vn.racehorse.account.dto.AccountDto;
 import vn.racehorse.account.dto.CreateAccountRequest;
+import vn.racehorse.account.dto.EmailRequest;
 import vn.racehorse.account.dto.RolesRequest;
 import vn.racehorse.account.entity.Role;
 import vn.racehorse.account.service.AccountService;
@@ -49,7 +50,7 @@ public class AccountController {
         PageParams params = PageParams.of(page, size, q);
         return Paging.page(service.list(role).stream()
                 .filter(a -> active == null || a.isActive() == active)
-                .filter(a -> Search.matches(params.q(), a.getUsername(), a.getDisplayName()))
+                .filter(a -> Search.matches(params.q(), a.getEmail(), a.getDisplayName()))
                 .map(a -> AccountDto.of(a, a.getRole() == Role.GROOM ? schedules.hasSchedule(a.getId()) : null))
                 .toList(), params);
     }
@@ -58,7 +59,7 @@ public class AccountController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public AccountDto create(@Valid @RequestBody CreateAccountRequest request) {
-        return AccountDto.of(service.create(request.username().trim(), request.displayName().trim(),
+        return AccountDto.of(service.create(request.email(), request.displayName().trim(),
                 request.password(), request.roles(), request.schedule()));
     }
 
@@ -66,6 +67,12 @@ public class AccountController {
     @PutMapping("/{id}/roles")
     public AccountDto changeRole(@PathVariable Long id, @Valid @RequestBody RolesRequest request) {
         return AccountDto.of(service.changeRole(id, request.roles()));
+    }
+
+    @Operation(summary = "Nhập hoặc sửa email của tài khoản (sửa cần lý do)")
+    @PutMapping("/{id}/email")
+    public AccountDto changeEmail(@PathVariable Long id, @Valid @RequestBody EmailRequest request) {
+        return AccountDto.of(service.changeEmail(id, request.email(), request.reason()));
     }
 
     @Operation(summary = "Vô hiệu hóa tài khoản")

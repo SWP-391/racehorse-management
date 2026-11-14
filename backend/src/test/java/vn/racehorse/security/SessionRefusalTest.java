@@ -39,7 +39,7 @@ class SessionRefusalTest extends ApiTest {
         mvc.perform(get("/actuator/health")).andExpect(status().isOk());
         mvc.perform(get("/api/auth/csrf")).andExpect(status().is2xxSuccessful());
         mvc.perform(post("/api/auth/login").with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                        .content(json.writeValueAsBytes(Map.of("username", "nobody", "password", "wrong-password"))))
+                        .content(json.writeValueAsBytes(Map.of("email", "nobody@racehorse.example", "password", "wrong-password"))))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(Matchers.not("UNAUTHENTICATED")));
     }
@@ -48,11 +48,11 @@ class SessionRefusalTest extends ApiTest {
     void BR_090_deactivatedAccountKeepsItsOwnMessage() throws Exception {
         var manager = account(Role.CLUB_MANAGER);
         JsonNode created = body(asJson(manager, post("/api/accounts"), Map.of(
-                "username", unique("staff"), "displayName", "Nhân viên mới", "password", PASSWORD,
+                "email", uniqueEmail("staff"), "displayName", "Nhân viên mới", "password", PASSWORD,
                 "roles", List.of("GROOM"))).andExpect(status().isCreated()));
         MockHttpSession open = (MockHttpSession) mvc.perform(post("/api/auth/login").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json.writeValueAsBytes(Map.of("username", created.get("username").asText(),
+                        .content(json.writeValueAsBytes(Map.of("email", created.get("email").asText(),
                                 "password", PASSWORD))))
                 .andReturn().getRequest().getSession(false);
         as(manager, post("/api/accounts/" + created.get("id").asLong() + "/deactivate")).andExpect(status().isOk());

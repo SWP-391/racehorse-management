@@ -142,7 +142,7 @@ class GroomOnlyResponsibleTest extends TrainingTestBase {
         as(manager, post("/api/accounts/" + k.id() + "/deactivate")).andExpect(status().isOk());
         assertThat(hasNotification(trainer, "đã bị vô hiệu hóa. Cần giao lại 1 buổi tập")).isTrue();
         // The notice names the Groom.
-        assertThat(hasNotification(trainer, "Groom Test " + k.username())).isTrue();
+        assertThat(hasNotification(trainer, "Groom Test " + k.email())).isTrue();
     }
 
     @Test

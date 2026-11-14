@@ -24,28 +24,28 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Accounts, one role per person, sign-in and deactivation (REQ-031, REQ-033, BR-090). */
 class AccountsTest extends ApiTest {
 
-    private MvcResult signIn(String username, String password) throws Exception {
+    private MvcResult signIn(String email, String password) throws Exception {
         return mvc.perform(post("/api/auth/login").with(csrf()).contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsBytes(Map.of("username", username, "password", password))))
+                .content(json.writeValueAsBytes(Map.of("email", email, "password", password))))
                 .andReturn();
     }
 
     private JsonNode createAccount(AccountPrincipal manager, String role) throws Exception {
         return body(asJson(manager, post("/api/accounts"), Map.of(
-                "username", unique("staff"), "displayName", "Nhân viên mới", "password", PASSWORD,
+                "email", uniqueEmail("staff"), "displayName", "Nhân viên mới", "password", PASSWORD,
                 "roles", List.of(role))).andExpect(status().isCreated()));
     }
 
-    /** Several callers creating one username at the same time: one account, the others get the duplicate answer (BR-090). */
+    /** Several callers creating one email at the same time: one account, the others get the duplicate answer (BR-090). */
     @Test
-    void simultaneousCreatesOfOneUsernameGiveOneAccountAndConflicts() throws Exception {
+    void simultaneousCreatesOfOneEmailGiveOneAccountAndConflicts() throws Exception {
         AccountPrincipal manager = account(Role.CLUB_MANAGER);
         int callers = 8;
         java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(callers);
         try {
             // One round can miss the window between the check and the insert; several rounds make the collision certain.
             for (int round = 0; round < 6; round++) {
-                String username = unique("race");
+                String email = uniqueEmail("race");
                 java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(callers);
                 java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
                 List<java.util.concurrent.Future<Integer>> results = new java.util.ArrayList<>();
@@ -53,7 +53,7 @@ class AccountsTest extends ApiTest {
                     results.add(pool.submit(() -> {
                         ready.countDown();
                         start.await();
-                        return asJson(manager, post("/api/accounts"), Map.of("username", username,
+                        return asJson(manager, post("/api/accounts"), Map.of("email", email,
                                 "displayName", "Tạo cùng lúc", "password", PASSWORD, "roles", List.of("GROOM")))
                                 .andReturn().getResponse().getStatus();
                     }));
@@ -82,8 +82,8 @@ class AccountsTest extends ApiTest {
     @Test
     void signInSucceedsWithCorrectPasswordAndFailsOtherwise() throws Exception {
         AccountPrincipal groom = account(Role.GROOM);
-        assertThat(signIn(groom.username(), "wrong-password").getResponse().getStatus()).isEqualTo(401);
-        MvcResult ok = signIn(groom.username(), PASSWORD);
+        assertThat(signIn(groom.email(), "wrong-password").getResponse().getStatus()).isEqualTo(401);
+        MvcResult ok = signIn(groom.email(), PASSWORD);
         assertThat(ok.getResponse().getStatus()).isEqualTo(200);
         mvc.perform(get("/api/auth/me").session((MockHttpSession) ok.getRequest().getSession(false)))
                 .andExpect(status().isOk())
@@ -97,7 +97,7 @@ class AccountsTest extends ApiTest {
         JsonNode created = createAccount(manager, "VETERINARIAN");
         assertThat(created.get("role").asText()).isEqualTo("VETERINARIAN");
 
-        MvcResult login = signIn(created.get("username").asText(), PASSWORD);
+        MvcResult login = signIn(created.get("email").asText(), PASSWORD);
         assertThat(login.getResponse().getStatus()).isEqualTo(200);
         MockHttpSession session = (MockHttpSession) login.getRequest().getSession(false);
 
@@ -379,7 +379,7 @@ class AccountsTest extends ApiTest {
         AccountPrincipal manager = account(Role.CLUB_MANAGER);
         JsonNode created = createAccount(manager, "HEAD_TRAINER");
         long id = created.get("id").asLong();
-        MockHttpSession openSession = (MockHttpSession) signIn(created.get("username").asText(), PASSWORD)
+        MockHttpSession openSession = (MockHttpSession) signIn(created.get("email").asText(), PASSWORD)
                 .getRequest().getSession(false);
 
         as(manager, post("/api/accounts/" + id + "/deactivate"))
@@ -389,7 +389,7 @@ class AccountsTest extends ApiTest {
         mvc.perform(get("/api/auth/me").session(openSession))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("ACCOUNT_DEACTIVATED"));
-        assertThat(signIn(created.get("username").asText(), PASSWORD).getResponse().getStatus()).isEqualTo(401);
+        assertThat(signIn(created.get("email").asText(), PASSWORD).getResponse().getStatus()).isEqualTo(401);
 
         JsonNode listed = body(as(manager, get("/api/accounts")));
         assertThat(listed.findValues("id").stream().map(JsonNode::asLong)).contains(id);
@@ -406,7 +406,7 @@ class AccountsTest extends ApiTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("ONE_ROLE_ONLY"))
                 .andExpect(jsonPath("$.fields.roles").value("Mỗi người chỉ có một vai trò."));
-        asJson(manager, post("/api/accounts"), Map.of("username", unique("two"), "displayName", "X",
+        asJson(manager, post("/api/accounts"), Map.of("email", uniqueEmail("two"), "displayName", "X",
                 "password", PASSWORD, "roles", List.of("GROOM", "VETERINARIAN")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("ONE_ROLE_ONLY"));
@@ -417,7 +417,7 @@ class AccountsTest extends ApiTest {
     void AC_023_veterinarianCannotCreateOrChangeAccounts() throws Exception {
         AccountPrincipal vet = account(Role.VETERINARIAN);
         AccountPrincipal other = account(Role.GROOM);
-        asJson(vet, post("/api/accounts"), Map.of("username", unique("x"), "displayName", "X",
+        asJson(vet, post("/api/accounts"), Map.of("email", uniqueEmail("x"), "displayName", "X",
                 "password", PASSWORD, "roles", List.of("GROOM")))
                 .andExpect(status().isForbidden());
         asJson(vet, put("/api/accounts/" + other.id() + "/roles"), Map.of("roles", List.of("CLUB_MANAGER")))

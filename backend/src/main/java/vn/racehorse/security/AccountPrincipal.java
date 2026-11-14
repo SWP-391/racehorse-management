@@ -10,12 +10,12 @@ import java.util.Collection;
 import java.util.List;
 
 /** The signed-in user, kept in the HTTP session. */
-public record AccountPrincipal(Long id, String username, String displayName, String passwordHash, Role role,
-                               boolean active) implements UserDetails {
+public record AccountPrincipal(Long id, String email, String displayName, String passwordHash, Role role,
+                               boolean active, long passwordVersion) implements UserDetails {
 
     public static AccountPrincipal of(UserAccount account) {
-        return new AccountPrincipal(account.getId(), account.getUsername(), account.getDisplayName(),
-                account.getPasswordHash(), account.getRole(), account.isActive());
+        return new AccountPrincipal(account.getId(), account.getEmail(), account.getDisplayName(),
+                account.getPasswordHash(), account.getRole(), account.isActive(), account.getPasswordVersion());
     }
 
     @Override
@@ -30,7 +30,7 @@ public record AccountPrincipal(Long id, String username, String displayName, Str
 
     @Override
     public String getUsername() {
-        return username;
+        return email;
     }
 
     @Override
@@ -41,6 +41,6 @@ public record AccountPrincipal(Long id, String username, String displayName, Str
     /** Never expose the hash when the principal is serialised. */
     @Override
     public String toString() {
-        return "AccountPrincipal[id=" + id + ", username=" + username + ", role=" + role + "]";
+        return "AccountPrincipal[id=" + id + ", email=" + email + ", role=" + role + "]";
     }
 }

@@ -55,11 +55,11 @@ class GroomScheduleTest extends ScheduleTestBase {
 
     @Test
     void AC_320_anInvalidScheduleOnCreationCreatesNoAccount() throws Exception {
-        String username = unique("groom");
-        asJson(manager, post("/api/accounts"), Map.of("username", username, "displayName", "X", "password", PASSWORD,
+        String email = uniqueEmail("groom");
+        asJson(manager, post("/api/accounts"), Map.of("email", email, "displayName", "X", "password", PASSWORD,
                 "roles", List.of("GROOM"), "schedule", List.of(range(1, "13:00", "12:00"))))
                 .andExpect(status().isBadRequest());
-        assertThat(accounts.existsByUsername(username)).isFalse();
+        assertThat(accounts.existsByEmail(email)).isFalse();
     }
 
     @Test
@@ -74,7 +74,7 @@ class GroomScheduleTest extends ScheduleTestBase {
     void aScheduleForAnotherRoleIsRefused() throws Exception {
         AccountPrincipal vetAccount = account(Role.VETERINARIAN);
         setSchedule(manager, vetAccount.id(), List.of(range(1, "05:00", "12:00"))).andExpect(status().isBadRequest());
-        asJson(manager, post("/api/accounts"), Map.of("username", unique("vet"), "displayName", "X",
+        asJson(manager, post("/api/accounts"), Map.of("email", uniqueEmail("vet"), "displayName", "X",
                 "password", PASSWORD, "roles", List.of("VETERINARIAN"), "schedule", List.of(range(1, "05:00", "12:00"))))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.fields.schedule").exists());
     }

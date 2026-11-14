@@ -48,6 +48,19 @@ public class ActiveAccountFilter extends OncePerRequestFilter {
                 return;
             }
             UserAccount current = account.get();
+            if (current.getPasswordVersion() != principal.passwordVersion()) {
+                // The password was reset after this session opened: it ends here (BR-216, TECH-223).
+                SecurityContextHolder.clearContext();
+                HttpSession session = request.getSession(false);
+                if (session != null) {
+                    session.invalidate();
+                }
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                response.setCharacterEncoding("UTF-8");
+                response.getWriter().write("{\"code\":\"UNAUTHENTICATED\",\"message\":\"Vui lòng đăng nhập.\",\"fields\":{}}");
+                return;
+            }
             if (current.getRole() != principal.role()) {
                 AccountPrincipal refreshed = AccountPrincipal.of(current);
                 var updated = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(

@@ -197,10 +197,22 @@ public class InvoiceService {
         } else {
             found = invoices.findAll();
         }
-        return found.stream().filter(i -> scope == null || Objects.equals(i.getOwnerId(), scope))
+        List<Invoice> visible = found.stream().filter(i -> scope == null || Objects.equals(i.getOwnerId(), scope)).toList();
+        // The payment status is kept apart from the invoice (BR-224): one lookup in its own table for the whole list.
+        java.util.Map<Long, java.time.Instant> paidAt = new java.util.HashMap<>();
+        if (!visible.isEmpty()) {
+            Long[] ids = visible.stream().map(Invoice::getId).toArray(Long[]::new);
+            jdbc.query("SELECT invoice_id, paid_at FROM invoice_payment WHERE invoice_id = ANY (?)",
+                    ps -> ps.setArray(1, ps.getConnection().createArrayOf("bigint", ids)),
+                    rs -> {
+                        paidAt.put(rs.getLong(1), rs.getTimestamp(2).toInstant());
+                    });
+        }
+        return visible.stream()
                 .map(i -> new InvoiceView(i.getId(), i.getOwnerId(), accounts.findById(i.getOwnerId())
                         .map(UserAccount::getDisplayName).orElse("?"), i.getMonth(), i.getNumber(), i.getTotal(),
-                        i.getClosedAt())).toList();
+                        i.getClosedAt(), paidAt.containsKey(i.getId()) ? "PAID" : "UNPAID", paidAt.get(i.getId())))
+                .toList();
     }
 
     @Transactional(readOnly = true)

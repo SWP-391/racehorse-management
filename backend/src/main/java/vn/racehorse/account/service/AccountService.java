@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vn.racehorse.account.EmailAddress;
 import vn.racehorse.account.entity.Role;
 import vn.racehorse.account.entity.UserAccount;
 import vn.racehorse.account.repository.UserAccountRepository;
@@ -17,6 +18,7 @@ import vn.racehorse.schedule.service.GroomScheduleService;
 import vn.racehorse.security.AccessGuard;
 import vn.racehorse.security.AccountPrincipal;
 import vn.racehorse.security.Permission;
+import vn.racehorse.security.recovery.PasswordRecoveryRepository;
 import vn.racehorse.schedule.dto.GroomScheduleRangeInput;
 
 import java.util.List;
@@ -35,10 +37,12 @@ public class AccountService {
     private final ClubClock clock;
     private final ApplicationEventPublisher events;
     private final GroomScheduleService schedules;
+    private final PasswordRecoveryRepository recoveries;
 
     public AccountService(UserAccountRepository accounts, PasswordEncoder passwordEncoder, AccessGuard access,
                           AuditService audit, ClubClock clock, ApplicationEventPublisher events,
-                          GroomScheduleService schedules) {
+                          GroomScheduleService schedules, PasswordRecoveryRepository recoveries) {
+        this.recoveries = recoveries;
         this.events = events;
         this.schedules = schedules;
         this.accounts = accounts;
@@ -55,44 +59,84 @@ public class AccountService {
     }
 
     @Transactional
-    public UserAccount create(String username, String displayName, String password, List<Role> roles) {
-        return create(username, displayName, password, roles, null);
+    public UserAccount create(String email, String displayName, String password, List<Role> roles) {
+        return create(email, displayName, password, roles, null);
     }
 
     /** A Groom may come with the fixed weekly barn hours; an invalid schedule creates no account (BR-166). */
     @Transactional
-    public UserAccount create(String username, String displayName, String password, List<Role> roles,
+    public UserAccount create(String emailText, String displayName, String password, List<Role> roles,
                               List<GroomScheduleRangeInput> schedule) {
         AccountPrincipal actor = access.require(Permission.MANAGE_ACCOUNTS);
         Role role = singleRole(roles);
+        String email = EmailAddress.parse(emailText).value();
         if (schedule != null && !schedule.isEmpty()) {
             if (role != Role.GROOM) {
                 throw ApiException.invalid("VALIDATION_FAILED", "schedule", "Chỉ Groom mới có lịch làm.");
             }
             GroomScheduleService.parse(schedule);
         }
-        if (accounts.existsByUsername(username)) {
-            throw duplicateUsername();
+        if (accounts.existsByEmail(email)) {
+            throw duplicateEmail();
         }
         UserAccount account;
         try {
-            account = accounts.saveAndFlush(new UserAccount(username, displayName,
+            account = accounts.saveAndFlush(new UserAccount(email, displayName,
                     passwordEncoder.encode(password), role, clock.now()));
         } catch (DataIntegrityViolationException e) {
-            // A concurrent create of the same name won the unique index between the check above and this insert (BR-090).
-            throw duplicateUsername();
+            // A concurrent create of the same email won the unique index between the check above and this insert (BR-090).
+            throw duplicateEmail();
         }
         audit.record(actor, "ACCOUNT_CREATED", "ACCOUNT", account.getId(),
-                Map.of("username", username, "role", role.name()));
+                Map.of("email", email, "role", role.name()));
         if (schedule != null && !schedule.isEmpty()) {
             schedules.setOnCreate(actor, account, schedule);
         }
         return account;
     }
 
-    private static ApiException duplicateUsername() {
-        return new ApiException(HttpStatus.CONFLICT, "DUPLICATE_USERNAME", "Tên đăng nhập đã tồn tại.",
-                Map.of("username", "Tên đăng nhập đã tồn tại."));
+    private static ApiException duplicateEmail() {
+        return new ApiException(HttpStatus.CONFLICT, "DUPLICATE_EMAIL", "Email đã được dùng.",
+                Map.of("email", "Email đã được dùng."));
+    }
+
+    /**
+     * Enters the missing email of an account, or corrects it with a reason (BR-212, DEC-074). Nobody changes their own
+     * email. A correction voids the live recovery code, so a code sent to the old address is useless.
+     */
+    @Transactional
+    public UserAccount changeEmail(Long id, String emailText, String reason) {
+        AccountPrincipal actor = access.require(Permission.MANAGE_ACCOUNTS);
+        if (actor.id().equals(id)) {
+            throw ApiException.invalid("SELF_EMAIL_CHANGE", "id", "Không thể tự đổi email của chính mình.");
+        }
+        String email = EmailAddress.parse(emailText).value();
+        UserAccount account = accounts.findByIdForUpdate(id).orElseThrow(() -> ApiException.notFound("tài khoản"));
+        String old = account.getEmail();
+        if (old != null && old.equals(email)) {
+            return account; // not a change: no audit entry, no error
+        }
+        String why = reason == null ? "" : reason.strip();
+        if (old != null && why.isEmpty()) {
+            throw ApiException.invalid("REASON_REQUIRED", "reason", "Bắt buộc nhập lý do.");
+        }
+        if (accounts.existsByEmail(email)) {
+            throw duplicateEmail();
+        }
+        account.changeEmail(email);
+        try {
+            accounts.saveAndFlush(account);
+        } catch (DataIntegrityViolationException e) {
+            throw duplicateEmail();
+        }
+        if (old == null) {
+            audit.record(actor, "ACCOUNT_EMAIL_SET", "ACCOUNT", account.getId(), Map.of("email", email));
+        } else {
+            recoveries.voidLive(account.getId());
+            audit.record(actor, "ACCOUNT_EMAIL_CORRECTED", "ACCOUNT", account.getId(),
+                    Map.of("oldEmail", old, "newEmail", email, "reason", why));
+        }
+        return account;
     }
 
     @Transactional
@@ -119,7 +163,7 @@ public class AccountService {
         }
         account.changeRole(role);
         audit.record(actor, "ROLE_CHANGED", "ACCOUNT", account.getId(),
-                Map.of("username", account.getUsername(), "oldRole", old.name(), "newRole", role.name()));
+                Map.of("email", account.emailForAudit(), "oldRole", old.name(), "newRole", role.name()));
         if (old == Role.GROOM) {
             schedules.clearOnRoleChange(actor, account);
             // BR-136: the Head Trainer is asked to reassign the sessions this Groom holds
@@ -145,7 +189,7 @@ public class AccountService {
             }
             account.deactivate();
             audit.record(actor, "ACCOUNT_DEACTIVATED", "ACCOUNT", account.getId(),
-                    Map.of("username", account.getUsername()));
+                    Map.of("email", account.emailForAudit()));
             if (account.getRole() == Role.GROOM) {
                 events.publishEvent(new GroomUnavailable(account.getId(), account.getDisplayName(),
                         "đã bị vô hiệu hóa"));

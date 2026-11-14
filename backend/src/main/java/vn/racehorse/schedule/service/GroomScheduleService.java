@@ -106,7 +106,7 @@ public class GroomScheduleService {
         }
         schedules.deleteByAccountId(account.getId());
         audit.record(actor, "SCHEDULE_CLEARED", "ACCOUNT", account.getId(),
-                Map.of("username", account.getUsername(), "before", summary(before)));
+                Map.of("email", account.emailForAudit(), "before", summary(before)));
     }
 
     private List<GroomScheduleRange> write(AccountPrincipal actor, UserAccount account, List<GroomScheduleRangeInput> input) {
@@ -119,7 +119,7 @@ public class GroomScheduleService {
         }
         if (!before.equals(parsed)) {
             audit.record(actor, "SCHEDULE_CHANGED", "ACCOUNT", account.getId(), Map.of(
-                    "username", account.getUsername(), "before", summary(before), "after", summary(parsed)));
+                    "email", account.emailForAudit(), "before", summary(before), "after", summary(parsed)));
         }
         return parsed;
     }
@@ -275,7 +275,7 @@ public class GroomScheduleService {
             throw leaveExists(date);
         }
         Map<String, Object> details = new LinkedHashMap<>();
-        details.put("username", account.getUsername());
+        details.put("email", account.emailForAudit());
         details.put("date", date.toString());
         details.put("late", late);
         if (text != null) {

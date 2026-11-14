@@ -117,7 +117,7 @@ public class OptionsController {
     }
 
     private static List<OptionDto> accountOptions(List<UserAccount> list) {
-        Function<UserAccount, OptionDto> map = a -> new OptionDto(a.getId(), a.getDisplayName(), a.getUsername());
+        Function<UserAccount, OptionDto> map = a -> new OptionDto(a.getId(), a.getDisplayName(), a.getEmail());
         return list.stream().map(map).toList();
     }
 }

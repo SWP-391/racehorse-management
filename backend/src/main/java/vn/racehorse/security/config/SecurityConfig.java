@@ -48,6 +48,8 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf
                         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                        // The bank-transfer service has no session and no token; it proves itself with its key (BR-225).
+                        .ignoringRequestMatchers("/api/payments/sepay")
                         .csrfTokenRequestHandler(csrfHandler))
                 .securityContext(ctx -> ctx.securityContextRepository(securityContextRepository()))
                 .formLogin(AbstractHttpConfigurer::disable)
@@ -56,7 +58,8 @@ public class SecurityConfig {
                 .exceptionHandling(e -> e.authenticationEntryPoint(SecurityConfig::refuseUnauthenticated)
                         .accessDeniedHandler(SecurityConfig::refuseForbidden))
                 .authorizeHttpRequests(auth -> {
-                    auth.requestMatchers("/actuator/health", "/api/auth/login", "/api/auth/csrf", "/api/openapi/**",
+                    auth.requestMatchers("/actuator/health", "/api/auth/login", "/api/auth/csrf", "/api/auth/recovery/request",
+                                    "/api/auth/recovery/confirm", "/api/payments/sepay", "/api/openapi/**",
                                     "/api/swagger-ui", "/api/swagger-ui/**")
                             .permitAll();
                     if (clientBundled) {

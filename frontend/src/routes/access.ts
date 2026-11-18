@@ -24,6 +24,8 @@ export const SECTIONS: RouteAccess[] = [
   { path: '/accounts', any: ['MANAGE_ACCOUNTS'] },
   { path: '/audit', any: ['VIEW_AUDIT_LOG'] },
   { path: '/settings', any: ['CONFIGURE_GRACE_PERIOD'] },
+  // last, so it never becomes a role's home (BR-191)
+  { path: '/inbox', any: ['MESSAGING'] },
 ];
 
 /** Pages below a section; a more specific pattern comes first (`/horses/new` before `/horses/:id`). */
@@ -38,12 +40,13 @@ const DETAIL_ROUTES: RouteAccess[] = [
   { path: '/plans/:id', any: ['VIEW_PLANS'] },
   { path: '/sessions/:id', any: ['VIEW_PLANS'] },
   { path: '/billing/print/:kind/:id', any: ['VIEW_BILLING'] },
+  { path: '/inbox/:key', any: ['MESSAGING'] },
 ];
 
 export const ROUTE_ACCESS: RouteAccess[] = [...DETAIL_ROUTES, ...SECTIONS];
 
 /** Pages open before signing in and to nobody once signed in: they have no access entry on purpose (PERM-058). */
-export const PUBLIC_ROUTES = ['/forgot-password'];
+export const PUBLIC_ROUTES = ['/forgot-password', '/activate'];
 
 /** True when the account's role may open this path (a path with no entry is not openable). */
 export function canOpen(me: Me, path: string): boolean {

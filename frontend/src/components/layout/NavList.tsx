@@ -1,8 +1,11 @@
+import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
-import { BookOpen, CalendarCheck, CalendarDays, ClipboardCheck, HeartPulse, House, Package, Landmark, Receipt, ScrollText, Settings, Siren, Syringe, TrendingUp, Users } from 'lucide-react';
+import { BookOpen, CalendarCheck, MessageSquare, CalendarDays, ClipboardCheck, HeartPulse, House, Package, Landmark, Receipt, ScrollText, Settings, Siren, Syringe, TrendingUp, Users } from 'lucide-react';
 import type { Permission } from '../../api/types';
+import { api } from '../../api/api';
 import { useAuth } from '../../auth/AuthContext';
+import { INBOX_CHANGED } from '../inbox/events';
 import { SECTIONS } from '../../routes/access';
 import { vi } from '../../i18n/vi';
 import { cn } from '@/lib/utils';
@@ -31,6 +34,7 @@ const DECOR: Record<string, { label: string; icon: LucideIcon }> = {
   '/accounts': { label: vi.nav.accounts, icon: Users },
   '/audit': { label: vi.nav.audit, icon: ScrollText },
   '/settings': { label: vi.nav.settings, icon: Settings },
+  '/inbox': { label: vi.nav.inbox, icon: MessageSquare },
 };
 
 /** Built from the same table as the landing check after sign-in, so the menu and the landing cannot drift (TECH-127). */
@@ -42,9 +46,36 @@ export function useNavItems() {
   return ITEMS.filter((item) => item.any.some(can));
 }
 
+const UNREAD_POLL_MS = 30_000;
+
+/** Unread messages of the inbox, asked every 30 seconds and again when a conversation was opened (BR-233). */
+function useInboxUnread() {
+  const [unread, setUnread] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const ask = () => {
+      // A failed answer keeps the last count; unknown is not zero.
+      Promise.resolve()
+        .then(() => api.inboxUnread())
+        .then((r) => alive && setUnread(r.unread))
+        .catch(() => undefined);
+    };
+    ask();
+    const timer = setInterval(ask, UNREAD_POLL_MS);
+    window.addEventListener(INBOX_CHANGED, ask);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      window.removeEventListener(INBOX_CHANGED, ask);
+    };
+  }, []);
+  return unread;
+}
+
 /** The ruled list of sections: hairlines between rows, a 2 px green bar on the active one. */
 export function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const items = useNavItems();
+  const unread = useInboxUnread();
   return (
     <nav aria-label="main">
       <ul className="m-0 grid list-none divide-y divide-border/70 border-y border-border/70 p-0">
@@ -63,6 +94,15 @@ export function NavList({ onNavigate }: { onNavigate?: () => void }) {
             >
               <Icon aria-hidden className="size-4 shrink-0" />
               {label}
+              {to === '/inbox' && unread !== null && unread > 0 && (
+                <span
+                  role="status"
+                  aria-label={vi.inbox.unread(unread)}
+                  className="ml-auto grid h-4 min-w-4 place-items-center rounded-full bg-destructive px-1 text-[0.625rem] leading-none font-semibold text-destructive-foreground tabular-nums"
+                >
+                  {unread > 9 ? '9+' : unread}
+                </span>
+              )}
             </NavLink>
           </li>
         ))}

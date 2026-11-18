@@ -8,6 +8,7 @@ import Layout from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ActivateAccountPage from './pages/ActivateAccountPage';
 import { DetailSkeleton, EmptyState } from './components/ui/states';
 import { useDelayedFlag } from './hooks/useDelayedFlag';
 import { vi } from './i18n/vi';
@@ -38,6 +39,7 @@ const BarnPage = lazyRetry(() => import('./pages/BarnPage'));
 const SuppliesPage = lazyRetry(() => import('./pages/SuppliesPage'));
 const BillingPage = lazyRetry(() => import('./pages/BillingPage'));
 const PaymentsPage = lazyRetry(() => import('./pages/PaymentsPage'));
+const InboxPage = lazyRetry(() => import('./pages/InboxPage'));
 const MySessionsPage = lazyRetry(() => import('./pages/MySessionsPage'));
 const TimetablePage = lazyRetry(() => import('./pages/TimetablePage'));
 const BillingPrintPage = lazyRetry(() => import('./pages/BillingPrintPage'));
@@ -80,6 +82,7 @@ function Routed() {
     return (
       <Routes>
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/activate" element={<ActivateAccountPage />} />
         <Route path="*" element={<LoginPage />} />
       </Routes>
     );
@@ -109,6 +112,8 @@ function Routed() {
         <Route path="/supplies" element={<Page><SuppliesPage /></Page>} />
         <Route path="/billing" element={<Page><BillingPage /></Page>} />
         <Route path="/payments" element={<Page><PaymentsPage /></Page>} />
+        <Route path="/inbox" element={<Page><InboxPage /></Page>} />
+        <Route path="/inbox/:key" element={<Page><InboxPage /></Page>} />
         <Route path="/timetable" element={<Page><TimetablePage /></Page>} />
         <Route path="/billing/print/:kind/:id" element={<Page><BillingPrintPage /></Page>} />
         <Route path="/my-sessions" element={<Page><MySessionsPage /></Page>} />

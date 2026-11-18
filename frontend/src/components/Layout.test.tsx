@@ -27,27 +27,27 @@ function menu() {
 describe('role-aware navigation (task 7.1, BR-091)', () => {
   test('Club Manager sees horses, health, payments, accounts, audit log and settings', () => {
     renderAs('CLUB_MANAGER', <Layout />);
-    expect(menu()).toEqual(['Ngựa', 'Sức khỏe', 'Việc hằng ngày', 'Chuồng trại', 'Vật tư', 'Chi phí', 'Thanh toán', 'Tài khoản', 'Nhật ký thao tác', 'Cài đặt']);
+    expect(menu()).toEqual(['Ngựa', 'Sức khỏe', 'Việc hằng ngày', 'Chuồng trại', 'Vật tư', 'Chi phí', 'Thanh toán', 'Tài khoản', 'Nhật ký thao tác', 'Cài đặt', 'Hộp thư']);
   });
 
   test('Head Trainer sees horses, health and the progress board', () => {
     renderAs('HEAD_TRAINER', <Layout />);
-    expect(menu()).toEqual(['Ngựa', 'Sức khỏe', 'Tiến độ', 'Việc hằng ngày', 'Chuồng trại', 'Thời gian biểu']);
+    expect(menu()).toEqual(['Ngựa', 'Sức khỏe', 'Tiến độ', 'Việc hằng ngày', 'Chuồng trại', 'Thời gian biểu', 'Hộp thư']);
   });
 
   test('Veterinarian sees horses, health, care and incidents', () => {
     renderAs('VETERINARIAN', <Layout />);
-    expect(menu()).toEqual(['Ngựa', 'Sức khỏe', 'Chăm sóc định kỳ', 'Sự cố', 'Việc hằng ngày', 'Chuồng trại']);
+    expect(menu()).toEqual(['Ngựa', 'Sức khỏe', 'Chăm sóc định kỳ', 'Sự cố', 'Việc hằng ngày', 'Chuồng trại', 'Hộp thư']);
   });
 
   test('Horse Owner sees horses, own chores and own barn', () => {
     renderAs('HORSE_OWNER', <Layout />);
-    expect(menu()).toEqual(['Ngựa', 'Việc hằng ngày', 'Chuồng trại', 'Chi phí']);
+    expect(menu()).toEqual(['Ngựa', 'Việc hằng ngày', 'Chuồng trại', 'Chi phí', 'Hộp thư']);
   });
 
   test('Groom sees incident reports and the sessions assigned to them (PERM-032)', () => {
     renderAs('GROOM', <Layout />);
-    expect(menu()).toEqual(['Sự cố', 'Việc hằng ngày', 'Chuồng trại', 'Vật tư', 'Thời gian biểu', 'Buổi tập được giao']);
+    expect(menu()).toEqual(['Sự cố', 'Việc hằng ngày', 'Chuồng trại', 'Vật tư', 'Thời gian biểu', 'Buổi tập được giao', 'Hộp thư']);
   });
 });
 

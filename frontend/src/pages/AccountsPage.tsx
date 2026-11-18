@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Ban, CalendarClock, CalendarOff, CircleAlert, CircleCheck, Mail, ShieldOff, Users } from 'lucide-react';
+import { Ban, CalendarClock, CalendarOff, CircleAlert, CircleCheck, Clock, Mail, Send, ShieldOff, Users } from 'lucide-react';
 import { api } from '../api/api';
 import { ApiError } from '../api/client';
 import { ROLES, type Account, type Role, type ScheduleRange } from '../api/types';
@@ -12,6 +12,7 @@ import { GroomScheduleDialog } from '../components/GroomScheduleDialog';
 import { LeaveDialog } from '../components/LeaveDialog';
 import { ScheduleEditor, toServiceRanges } from '../components/ScheduleEditor';
 import { Button } from '../components/ui/button';
+import { RadioGroup, RadioGroupItem } from '../components/ui/choice';
 import { ConfirmButton } from '../components/ui/confirm-button';
 import { DataTable, type DataColumn } from '../components/ui/data-table';
 import { DataView } from '../components/ui/data-view';
@@ -24,7 +25,10 @@ import { ListFooter, ListToolbar } from '../components/ui/list-toolbar';
 import { Select } from '../components/ui/select';
 import { Callout, EmptyState } from '../components/ui/states';
 
-const EMPTY_FORM = { email: '', displayName: '', password: '', role: '' as Role | '' };
+type CreateMode = 'invite' | 'password';
+
+/** By default the person activates the account with a mailed code; the password mode is for accounts without a mailbox (BR-235). */
+const EMPTY_FORM = { email: '', emailRepeat: '', displayName: '', password: '', role: '' as Role | '', mode: 'invite' as CreateMode };
 
 /**
  * Club Manager: create accounts with exactly one role, change role, deactivate (BR-090); a Groom gets fixed weekly
@@ -67,7 +71,11 @@ export default function AccountsPage() {
     const refused = collect({
       email: required(form.email) ?? maxLength(form.email, LIMITS.email) ?? emailShape(form.email),
       displayName: required(form.displayName) ?? maxLength(form.displayName, LIMITS.displayName),
-      password: required(form.password) ?? (form.password.length < 8 ? 'Mật khẩu cần 8 ký tự trở lên.' : maxLength(form.password, 100)),
+      emailRepeat: required(form.emailRepeat) ?? (form.emailRepeat.trim().toLowerCase() !== form.email.trim().toLowerCase() ? vi.accounts.emailMismatch : null),
+      password:
+        form.mode === 'invite'
+          ? null
+          : required(form.password) ?? (form.password.length < 8 ? 'Mật khẩu cần 8 ký tự trở lên.' : maxLength(form.password, 100)),
       roles: blank(form.role) ? 'Bắt buộc chọn vai trò.' : null,
     });
     setFieldErrors(refused);
@@ -80,13 +88,15 @@ export default function AccountsPage() {
       await api.createAccount({
         email: form.email,
         displayName: form.displayName,
-        password: form.password,
+        password: form.mode === 'password' ? form.password : undefined,
         roles: form.role ? [form.role] : [],
         schedule: form.role === 'GROOM' && schedule.length > 0 ? toServiceRanges(schedule) : undefined,
       });
+      const invited = form.mode === 'invite';
+      const sentTo = form.email.trim();
       setForm(EMPTY_FORM);
       setSchedule([]);
-      notify.success(vi.common.saved);
+      notify.success(invited ? vi.accounts.invited(sentTo) : vi.common.saved);
       await list.load.reload();
     } catch (err) {
       report(err);
@@ -104,6 +114,19 @@ export default function AccountsPage() {
       await list.load.reload();
     } catch (err) {
       report(err);
+    }
+  }
+
+  async function resend(account: Account) {
+    setError(null);
+    setFieldErrors({});
+    try {
+      await api.resendActivationCode(account.id);
+      notify.success(vi.accounts.resent);
+      await list.load.reload();
+    } catch (err) {
+      // A refusal that comes too soon is a sentence for the banner, not a field.
+      setError(err instanceof ApiError ? err.message : vi.common.unexpectedError);
     }
   }
 
@@ -179,7 +202,11 @@ export default function AccountsPage() {
       id: 'status', fit: true,
       header: vi.accounts.status,
       cell: (a) =>
-        a.active ? (
+        a.pending ? (
+          <Badge tone="watch" icon={<Clock aria-hidden />}>
+            {vi.accounts.pending}
+          </Badge>
+        ) : a.active ? (
           <Badge tone="eligible" icon={<CircleCheck aria-hidden />}>
             {vi.accounts.active}
           </Badge>
@@ -195,17 +222,24 @@ export default function AccountsPage() {
       actions: true,
       cell: (a) => (
         <>
+          {/* The schedule of a pending Groom may be edited; leave only once the Groom is active (BR-236). */}
+          {a.role === 'GROOM' && (a.active || a.pending) && (
+            <Button type="button" variant="outline" size="sm" aria-label={vi.schedule.editFor(a.displayName)} onClick={() => setScheduleOf(a)}>
+              <CalendarClock aria-hidden />
+              {vi.schedule.edit}
+            </Button>
+          )}
           {a.role === 'GROOM' && a.active && (
-            <>
-              <Button type="button" variant="outline" size="sm" aria-label={vi.schedule.editFor(a.displayName)} onClick={() => setScheduleOf(a)}>
-                <CalendarClock aria-hidden />
-                {vi.schedule.edit}
-              </Button>
-              <Button type="button" variant="outline" size="sm" aria-label={vi.leave.buttonFor(a.displayName)} onClick={() => setLeaveOf(a)}>
-                <CalendarOff aria-hidden />
-                {vi.leave.button}
-              </Button>
-            </>
+            <Button type="button" variant="outline" size="sm" aria-label={vi.leave.buttonFor(a.displayName)} onClick={() => setLeaveOf(a)}>
+              <CalendarOff aria-hidden />
+              {vi.leave.button}
+            </Button>
+          )}
+          {a.pending && (
+            <Button type="button" variant="outline" size="sm" aria-label={vi.accounts.resendFor(a.displayName)} onClick={() => void resend(a)}>
+              <Send aria-hidden />
+              {vi.accounts.resendCode}
+            </Button>
           )}
           {/* Nobody changes their own email (BR-212), so the signed-in person's row has no email button. */}
           {a.id !== me?.id && (
@@ -214,11 +248,11 @@ export default function AccountsPage() {
               {a.email ? vi.accounts.correctEmail : vi.accounts.enterEmail}
             </Button>
           )}
-          {a.active && a.id !== me?.id && (
+          {(a.active || a.pending) && a.id !== me?.id && (
             <ConfirmButton
               destructive
               title={vi.accounts.deactivateTitle(a.displayName)}
-              description={vi.accounts.deactivateText}
+              description={a.pending ? vi.accounts.deactivatePendingText : vi.accounts.deactivateText}
               confirmLabel={vi.accounts.deactivate}
               onConfirm={() => deactivate(a)}
             >
@@ -249,12 +283,17 @@ export default function AccountsPage() {
               <FormField label={vi.accounts.email} error={fieldErrors.email}>
                 <Input type="email" inputMode="email" maxLength={LIMITS.email} autoComplete="off" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
               </FormField>
+              <FormField label={vi.accounts.confirmEmail} error={fieldErrors.emailRepeat}>
+                <Input type="email" inputMode="email" maxLength={LIMITS.email} autoComplete="off" value={form.emailRepeat} onChange={(e) => setForm({ ...form, emailRepeat: e.target.value })} />
+              </FormField>
               <FormField label={vi.accounts.displayName} error={fieldErrors.displayName}>
                 <Input maxLength={LIMITS.displayName} value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
               </FormField>
-              <FormField label={vi.accounts.password} error={fieldErrors.password}>
-                <Input type="password" maxLength={100} autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-              </FormField>
+              {form.mode === 'password' && (
+                <FormField label={vi.accounts.password} error={fieldErrors.password}>
+                  <Input type="password" maxLength={100} autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+                </FormField>
+              )}
               {/* A single select: one role per person (BR-090). */}
               <FormField label={vi.accounts.role} description={vi.accounts.oneRoleOnly} error={fieldErrors.roles}>
                 <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })}>
@@ -267,6 +306,20 @@ export default function AccountsPage() {
                 </Select>
               </FormField>
             </div>
+            <fieldset className="grid gap-2">
+              <legend className="text-sm font-medium">{vi.accounts.createMode}</legend>
+              <RadioGroup value={form.mode} onValueChange={(v) => setForm({ ...form, mode: v as CreateMode, password: '' })}>
+                {(['invite', 'password'] as const).map((m) => (
+                  <label key={m} className="flex items-start gap-2">
+                    <RadioGroupItem value={m} className="mt-0.5" />
+                    <span className="grid">
+                      <span className="text-sm font-medium">{m === 'invite' ? vi.accounts.modeInvite : vi.accounts.modePassword}</span>
+                      <span className="text-meta text-muted-foreground">{m === 'invite' ? vi.accounts.modeInviteHint : vi.accounts.modePasswordHint}</span>
+                    </span>
+                  </label>
+                ))}
+              </RadioGroup>
+            </fieldset>
             {form.role === 'GROOM' && (
               <fieldset className="grid gap-2">
                 <legend className="text-sm font-medium">{vi.accounts.scheduleOfGroom}</legend>

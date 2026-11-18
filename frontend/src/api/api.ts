@@ -77,6 +77,12 @@ import type {
   FeeTypeOption,
   InvoiceRow,
   PaymentView,
+  ConversationDetail,
+  ConversationRow,
+  ThreadDetail,
+  ThreadRow,
+  RecipientOptions,
+  StartConversationInput,
   TransferRow,
   UnpaidInvoice,
   PriceList,
@@ -116,8 +122,10 @@ export const api = {
 
   accounts: (query: ListQuery & { role?: Role; active?: boolean } = {}) =>
     request<Page<Account>>('GET', `/api/accounts${listQs(query)}`),
-  createAccount: (input: { email: string; displayName: string; password: string; roles: Role[]; schedule?: ScheduleRange[] }) =>
+  /** Without a password the account is pending and a code is mailed to its owner (BR-235). */
+  createAccount: (input: { email: string; displayName: string; password?: string; roles: Role[]; schedule?: ScheduleRange[] }) =>
     request<Account>('POST', '/api/accounts', input),
+  resendActivationCode: (id: number) => request<Account>('POST', `/api/accounts/${id}/activation-code`),
   /** Enters the missing email of an account, or corrects it with a reason (BR-212). */
   changeEmail: (id: number, input: { email: string; reason?: string }) =>
     request<Account>('PUT', `/api/accounts/${id}/email`, input),
@@ -417,6 +425,22 @@ export const api = {
   unpaidInvoices: () => request<UnpaidInvoice[]>('GET', '/api/payments/unpaid-invoices'),
   assignTransfer: (transferId: number, invoiceId: number, reason: string) =>
     request<void>('POST', `/api/payments/transfers/${transferId}/assign`, { invoiceId, reason }),
+  // inbox of conversations (BR-227 to BR-234)
+  inboxUnread: () => request<{ unread: number }>('GET', '/api/inbox/unread'),
+  inboxRecipients: (horseId?: number | null) =>
+    request<RecipientOptions>('GET', `/api/inbox/recipients${horseId ? `?horseId=${horseId}` : ''}`),
+  conversations: (page = 0) => request<Page<ConversationRow>>('GET', `/api/inbox/conversations?page=${page}`),
+  startConversation: (input: StartConversationInput) =>
+    request<{ id: number }>('POST', '/api/inbox/conversations', input),
+  threads: (query: { page?: number; size?: number; q?: string } = {}) =>
+    request<Page<ThreadRow>>('GET', `/api/inbox/threads${listQs(query)}`),
+  thread: (key: string) => request<ThreadDetail>('GET', `/api/inbox/threads/${encodeURIComponent(key)}`),
+  sendToThread: (key: string, text: string) =>
+    request<{ id: number }>('POST', `/api/inbox/threads/${encodeURIComponent(key)}/messages`, { text }),
+  conversation: (id: number) => request<ConversationDetail>('GET', `/api/inbox/conversations/${id}`),
+  sendMessage: (id: number, text: string) => request<{ id: number }>('POST', `/api/inbox/conversations/${id}/messages`, { text }),
+  closeConversation: (id: number) => request<void>('POST', `/api/inbox/conversations/${id}/close`),
+  reopenConversation: (id: number) => request<void>('POST', `/api/inbox/conversations/${id}/reopen`),
   addAdjustment: (input: AdjustmentInput) => request<void>('POST', '/api/billing/adjustments', clean(input)),
 };
 

@@ -92,14 +92,15 @@ export function usePagedList<D extends PageLike>(fetcher: (query: ListQuery) => 
   );
 
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const setQuery = useCallback(
-    (text: string) => {
-      setQueryText(text);
-      if (pending.current) clearTimeout(pending.current);
-      pending.current = setTimeout(() => update({ q: text.trim(), page: 0 }), DEBOUNCE_MS);
-    },
-    [update],
-  );
+  // The timer fires after the render that started it: it must write on top of the URL as it is then, not as it was
+  // (a tab chosen in between would be lost).
+  const latestUpdate = useRef(update);
+  latestUpdate.current = update;
+  const setQuery = useCallback((text: string) => {
+    setQueryText(text);
+    if (pending.current) clearTimeout(pending.current);
+    pending.current = setTimeout(() => latestUpdate.current({ q: text.trim(), page: 0 }), DEBOUNCE_MS);
+  }, []);
   useEffect(
     () => () => {
       if (pending.current) clearTimeout(pending.current);

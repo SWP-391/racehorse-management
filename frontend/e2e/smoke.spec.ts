@@ -69,7 +69,10 @@ async function signIn(page: Page, email: string, password: string) {
 async function createAccount(page: Page, a: { email: string; password: string; name: string }, role: string) {
   await page.getByRole('link', { name: 'Tài khoản' }).click();
   await page.getByLabel(/^Email/).fill(a.email);
+  await page.getByLabel(/^Nhập lại email/).fill(a.email);
   await page.getByLabel(/^Họ tên/).fill(a.name);
+  // The accounts of a run have no mailbox, so the password is set at creation (BR-235).
+  await page.getByRole('radio', { name: /Đặt mật khẩu ngay/ }).click();
   await page.getByLabel(/^Mật khẩu/).fill(a.password);
   await page.getByLabel(/^Vai trò/).selectOption(role);
   await page.getByRole('button', { name: 'Tạo tài khoản' }).click();
@@ -88,7 +91,9 @@ test('AC-001 Club Manager registers a horse and its owner sees it', async ({ pag
 
   await page.getByRole('link', { name: 'Tài khoản' }).click();
   await page.getByLabel(/^Email/).fill(owner.email);
+  await page.getByLabel(/^Nhập lại email/).fill(owner.email);
   await page.getByLabel(/^Họ tên/).fill(owner.name);
+  await page.getByRole('radio', { name: /Đặt mật khẩu ngay/ }).click();
   await page.getByLabel(/^Mật khẩu/).fill(owner.password);
   await page.getByLabel(/^Vai trò/).selectOption('HORSE_OWNER');
   await page.getByRole('button', { name: 'Tạo tài khoản' }).click();
@@ -96,7 +101,7 @@ test('AC-001 Club Manager registers a horse and its owner sees it', async ({ pag
   // Every horse has an assigned Head Trainer, chosen when it is registered (BR-152).
   await createAccount(page, trainer, 'HEAD_TRAINER');
 
-  await page.getByRole('link', { name: 'Ngựa' }).click();
+  await page.getByRole('link', { name: 'Ngựa', exact: true }).click();
   // The empty list shows a second "Đăng ký ngựa" link next to the header one; either opens the form.
   await page.getByRole('link', { name: 'Đăng ký ngựa' }).first().click();
   await page.getByLabel(/^Tên ngựa/).fill(horseName);
@@ -232,7 +237,7 @@ test.describe('injury marks on the 3D model', () => {
   test.describe.configure({ timeout: 180_000 });
   test('AC-126 AC-127 AC-135 AC-142 Veterinarian marks a region and follows recovery; Head Trainer reads only', async ({ page }) => {
     await signIn(page, vet.email, vet.password);
-    await page.getByRole('link', { name: 'Ngựa' }).click();
+    await page.getByRole('link', { name: 'Ngựa', exact: true }).click();
     await openHorse(page);
     await openTile(page, 'Hồ sơ khám bệnh');
     const exams = page.getByRole('form', { name: 'Ghi nhận lần khám' });
@@ -287,10 +292,11 @@ test.describe('injury marks on the 3D model', () => {
 
     await page.getByRole('button', { name: 'Đăng xuất' }).click();
     await signIn(page, trainer.email, trainer.password);
-    await page.getByRole('link', { name: 'Ngựa' }).click();
+    await page.getByRole('link', { name: 'Ngựa', exact: true }).click();
     await openHorse(page);
     await page.getByRole('link', { name: 'Dấu chấn thương trên mô hình 3D' }).click();
-    await expect(page.getByRole('listitem', { name: 'Khớp bàn trước trái' })).toContainText('Đang hồi phục');
+    // The 3D page loads slowly under software WebGL (see the wait above): same assertion, longer wait.
+    await expect(page.getByRole('listitem', { name: 'Khớp bàn trước trái' })).toContainText('Đang hồi phục', { timeout: 20_000 });
     await expect(page.getByRole('button', { name: 'Đánh dấu chấn thương' })).toHaveCount(0);
     await expect(page.getByLabel('Trạng thái mới')).toHaveCount(0);
   });
@@ -303,7 +309,7 @@ test('AC-147 AC-160 Head Trainer uploads a trial-run video; the Owner plays it',
   const today = clubDate();
 
   await signIn(page, trainer.email, trainer.password);
-  await page.getByRole('link', { name: 'Ngựa' }).click();
+  await page.getByRole('link', { name: 'Ngựa', exact: true }).click();
   await openHorse(page);
   await openTile(page, 'Giáo án huấn luyện');
   await page.getByRole('link', { name: /Giáo án e2e/ }).click();
@@ -351,7 +357,7 @@ test('AC-180 Head Trainer assigns a session to the Groom; the Groom sees it read
   const tomorrow = clubDate(1);
 
   await signIn(page, trainer.email, trainer.password);
-  await page.getByRole('link', { name: 'Ngựa' }).click();
+  await page.getByRole('link', { name: 'Ngựa', exact: true }).click();
   await openHorse(page);
   await openTile(page, 'Giáo án huấn luyện');
   await page.getByRole('link', { name: /Giáo án e2e/ }).click();
@@ -388,7 +394,7 @@ test('AC-185 AC-186 Head Trainer hands the session over; both Grooms are told; t
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
   await signIn(page, trainer.email, trainer.password);
-  await page.getByRole('link', { name: 'Ngựa' }).click();
+  await page.getByRole('link', { name: 'Ngựa', exact: true }).click();
   await openHorse(page);
   await openTile(page, 'Giáo án huấn luyện');
   await page.getByRole('link', { name: /Giáo án e2e/ }).click();
@@ -425,7 +431,7 @@ test('AC-185 AC-186 Head Trainer hands the session over; both Grooms are told; t
 
   // The Head Trainer sees "Đã nhận" next to the session.
   await signIn(page, trainer.email, trainer.password);
-  await page.getByRole('link', { name: 'Ngựa' }).click();
+  await page.getByRole('link', { name: 'Ngựa', exact: true }).click();
   await openHorse(page);
   await openTile(page, 'Giáo án huấn luyện');
   await page.getByRole('link', { name: /Giáo án e2e/ }).click();
@@ -438,7 +444,7 @@ test('AC-197 a session overlapping another of the same horse is refused, naming 
   const tomorrow = clubDate(1);
 
   await signIn(page, trainer.email, trainer.password);
-  await page.getByRole('link', { name: 'Ngựa' }).click();
+  await page.getByRole('link', { name: 'Ngựa', exact: true }).click();
   await openHorse(page);
   await openTile(page, 'Giáo án huấn luyện');
   await page.getByRole('link', { name: /Giáo án e2e/ }).click();
@@ -477,7 +483,7 @@ test('AC-245 AC-255 AC-257 the Veterinarian composes a ration; the Groom and the
 
   // The Veterinarian composes the ration.
   await signIn(page, vet.email, vet.password);
-  await page.getByRole('link', { name: 'Ngựa' }).click();
+  await page.getByRole('link', { name: 'Ngựa', exact: true }).click();
   await openHorse(page);
   await page.getByRole('link', { name: 'Khẩu phần ăn' }).click();
   const form = page.getByRole('form', { name: 'Soạn khẩu phần' });
@@ -496,12 +502,17 @@ test('AC-245 AC-255 AC-257 the Veterinarian composes a ration; the Groom and the
   await signIn(page, groom.email, groom.password);
   await page.getByRole('link', { name: 'Việc hằng ngày' }).click();
   await page.getByPlaceholder(/^Tìm theo tên ngựa/).fill(horseName);
-  await expect(page.getByText(new RegExp(`06:00 Bữa sáng: ${oats} 2.5 kg`))).toBeVisible();
+  // The meals are one short line ("1 bữa") with an eye button; the popup lists them (AC-398).
+  await page.getByRole('button', { name: new RegExp(`^Xem: .* — ${horseName}$`) }).click();
+  const meals = page.getByRole('dialog');
+  await expect(meals).toContainText('06:00 Bữa sáng');
+  await expect(meals).toContainText(`${oats} 2.5 kg`);
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
   // The Owner reads the current ration of the own horse, without an editor.
   await signIn(page, owner.email, owner.password);
-  await page.getByRole('link', { name: 'Ngựa' }).click();
+  await page.getByRole('link', { name: 'Ngựa', exact: true }).click();
   await openHorse(page);
   await page.getByRole('link', { name: 'Khẩu phần ăn' }).click();
   await expect(page.getByRole('list', { name: 'Khẩu phần hiện hành' })).toContainText(oats);
@@ -556,21 +567,20 @@ test('AC-352 AC-353 AC-360 the Club Manager prices an examination; the Veterinar
   await signIn(page, admin.email, admin.password);
   await page.getByRole('link', { name: 'Chi phí' }).click();
   await page.getByRole('button', { name: 'Bảng giá' }).click();
-  await page.getByLabel('Tên loại phí').fill(typeName);
+  // A fee type is added with its first price in one form (AC-452).
   await page.getByRole('button', { name: 'Thêm loại phí khám' }).click();
+  const typeForm = page.getByRole('form', { name: 'Thêm loại phí khám' });
+  await typeForm.getByLabel(/^Tên loại phí/).fill(typeName);
+  await typeForm.getByLabel(/^Số tiền/).fill('200000');
+  await typeForm.getByRole('button', { name: 'Lưu giá' }).click();
   const row = page.getByRole('row', { name: new RegExp(typeName) });
   await expect(row).toBeVisible();
-  await row.getByRole('button', { name: 'Đặt giá mới' }).click();
-  const priceForm = page.getByRole('form', { name: 'Đặt giá mới' });
-  await priceForm.getByLabel(/^Số tiền/).fill('200000');
-  await priceForm.getByLabel(/^Áp dụng từ/).fill(clubDate());
-  await priceForm.getByRole('button', { name: 'Lưu giá' }).click();
   await expect(row).toContainText('200.000');
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
 
   // The Veterinarian chooses the type by name; no amount is on the page.
   await signIn(page, vet.email, vet.password);
-  await page.getByRole('link', { name: 'Ngựa' }).click();
+  await page.getByRole('link', { name: 'Ngựa', exact: true }).click();
   await openHorse(page);
   await openTile(page, 'Hồ sơ khám bệnh');
   const select = page.getByLabel(/^Loại phí khám/);
@@ -615,6 +625,8 @@ test('AC-388 AC-389 AC-392 the Club Manager adds, uses, renames and deactivates 
   await signIn(page, admin.email, admin.password);
   await page.goto('/supplies');
 
+  const tab = (name: string) => page.getByRole('button', { name, exact: true });
+  await tab('Đơn vị').click();
   await page.getByRole('button', { name: 'Thêm đơn vị' }).click();
   await page.getByRole('dialog').getByLabel('Tên đơn vị', { exact: true }).fill(`  ${unit}  `);
   await page.getByRole('dialog').getByRole('button', { name: 'Lưu' }).click();
@@ -628,14 +640,19 @@ test('AC-388 AC-389 AC-392 the Club Manager adds, uses, renames and deactivates 
   await form.getByLabel('Giá (VND)', { exact: true }).fill('1000');
   await form.getByRole('button', { name: 'Lưu' }).click();
   // The catalogue is paged and grows with every run: search for this run's item.
+  await tab('Danh mục vật tư').click();
   await page.getByPlaceholder(/^Tìm/).first().fill(item);
   await expect(page.getByRole('row', { name: new RegExp(item) })).toContainText(unit);
 
+  await tab('Đơn vị').click();
   await page.getByRole('button', { name: `Đổi tên đơn vị ${unit}` }).click();
   await page.getByRole('dialog').getByLabel('Tên đơn vị', { exact: true }).fill(renamed);
   await page.getByRole('dialog').getByRole('button', { name: 'Lưu' }).click();
+  await tab('Danh mục vật tư').click();
+  await page.getByPlaceholder(/^Tìm/).first().fill(item);
   await expect(page.getByRole('row', { name: new RegExp(item) })).toContainText(renamed);
 
+  await tab('Đơn vị').click();
   await page.getByRole('button', { name: `Ngừng dùng đơn vị ${renamed}` }).click();
   await expect(page.getByRole('row', { name: new RegExp(renamed) }).first()).toContainText('Ngừng dùng');
   await page.getByRole('button', { name: 'Thêm vật tư' }).click();

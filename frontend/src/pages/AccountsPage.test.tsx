@@ -14,6 +14,7 @@ vitest.mock('../api/api', () => ({
     changeRole: vitest.fn(),
     changeEmail: vitest.fn(),
     deactivate: vitest.fn(),
+    resendActivationCode: vitest.fn(),
     groomSchedule: vitest.fn(),
     setGroomSchedule: vitest.fn(),
     leave: vitest.fn(),
@@ -23,7 +24,7 @@ vitest.mock('../api/api', () => ({
   },
 }));
 
-const account = { id: 7, email: 'ht@racehorse.example', displayName: 'Huấn luyện viên A', role: 'HEAD_TRAINER', active: true, createdAt: '' };
+const account = { id: 7, email: 'ht@racehorse.example', displayName: 'Huấn luyện viên A', role: 'HEAD_TRAINER', active: true, pending: false, createdAt: '' };
 
 const groom = { ...account, id: 8, email: 'groom@racehorse.example', displayName: 'Groom An', role: 'GROOM' };
 
@@ -52,7 +53,9 @@ describe('account administration (task 7.2, BR-090)', () => {
     );
     renderAs('CLUB_MANAGER', <AccountsPage />);
     await userEvent.type(screen.getByLabelText(/^Email/), 'new@racehorse.example');
+    await userEvent.type(screen.getByLabelText(/^Nhập lại email/), 'new@racehorse.example');
     await userEvent.type(screen.getByLabelText(/^Họ tên/), 'Người mới');
+    await userEvent.click(screen.getByRole('radio', { name: /Đặt mật khẩu ngay/ }));
     await userEvent.type(screen.getByLabelText(/^Mật khẩu/), 'password-123');
     await userEvent.selectOptions(screen.getByLabelText(/^Vai trò/), 'HEAD_TRAINER');
     await userEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
@@ -62,6 +65,7 @@ describe('account administration (task 7.2, BR-090)', () => {
   test('an empty form names every field, a short password is refused and nothing is sent', async () => {
     vitest.mocked(api.createAccount).mockClear();
     renderAs('CLUB_MANAGER', <AccountsPage />);
+    await userEvent.click(screen.getByRole('radio', { name: /Đặt mật khẩu ngay/ }));
     await userEvent.type(screen.getByLabelText(/^Mật khẩu/), 'short');
     await userEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
     expect(screen.getByLabelText(/^Email/)).toHaveAccessibleDescription('Bắt buộc nhập.');
@@ -78,7 +82,9 @@ describe('account administration (task 7.2, BR-090)', () => {
     vitest.mocked(api.createAccount).mockClear();
     renderAs('CLUB_MANAGER', <AccountsPage />);
     await userEvent.type(screen.getByLabelText(/^Email/), 'an.le@');
+    await userEvent.type(screen.getByLabelText(/^Nhập lại email/), 'an.le@');
     await userEvent.type(screen.getByLabelText(/^Họ tên/), 'An Lê');
+    await userEvent.click(screen.getByRole('radio', { name: /Đặt mật khẩu ngay/ }));
     await userEvent.type(screen.getByLabelText(/^Mật khẩu/), 'password-123');
     await userEvent.selectOptions(screen.getByLabelText(/^Vai trò/), 'GROOM');
     await userEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
@@ -129,10 +135,107 @@ describe('account administration (task 7.2, BR-090)', () => {
   });
 });
 
+describe('account activation by a mailed code (BR-235 to BR-238, DEC-076)', () => {
+  const pendingGroom = { ...groom, id: 9, email: 'moi@racehorse.example', displayName: 'Groom Mới', active: false, pending: true };
+
+  async function fill(email = 'moi@racehorse.example', repeat = email) {
+    await userEvent.type(screen.getByLabelText(/^Email/), email);
+    if (repeat) await userEvent.type(screen.getByLabelText(/^Nhập lại email/), repeat);
+    await userEvent.type(screen.getByLabelText(/^Họ tên/), 'Người mới');
+    await userEvent.selectOptions(screen.getByLabelText(/^Vai trò/), 'VETERINARIAN');
+  }
+
+  test('AC-505 the default sends no password, hides the field and says where the code went', async () => {
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    expect(screen.getByRole('radio', { name: /Gửi mã kích hoạt qua email/ })).toBeChecked();
+    expect(screen.queryByLabelText(/^Mật khẩu/)).not.toBeInTheDocument();
+    await fill();
+    await userEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
+    expect(api.createAccount).toHaveBeenCalledTimes(1);
+    expect(vitest.mocked(api.createAccount).mock.calls[0][0]).toEqual({
+      email: 'moi@racehorse.example', displayName: 'Người mới', password: undefined, roles: ['VETERINARIAN'], schedule: undefined,
+    });
+  });
+
+  test('the password mode shows the field, checks it and sends it', async () => {
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    await userEvent.click(screen.getByRole('radio', { name: /Đặt mật khẩu ngay/ }));
+    await fill();
+    await userEvent.type(screen.getByLabelText(/^Mật khẩu/), 'short');
+    await userEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
+    expect(screen.getByLabelText(/^Mật khẩu/)).toHaveAccessibleDescription('Mật khẩu cần 8 ký tự trở lên.');
+    expect(api.createAccount).not.toHaveBeenCalled();
+    await userEvent.clear(screen.getByLabelText(/^Mật khẩu/));
+    await userEvent.type(screen.getByLabelText(/^Mật khẩu/), 'password-123');
+    await userEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
+    expect(vitest.mocked(api.createAccount).mock.calls[0][0].password).toBe('password-123');
+  });
+
+  test('AC-520 two emails that differ send nothing and name the second field', async () => {
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    await fill('moi@racehorse.example', 'moi@racehorse.exampel');
+    await userEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
+    expect(screen.getByLabelText(/^Nhập lại email/)).toHaveAccessibleDescription('Hai email chưa giống nhau.');
+    expect(api.createAccount).not.toHaveBeenCalled();
+  });
+
+  test('AC-520 the second email is required and a different case or spaces still match', async () => {
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    await fill('moi@racehorse.example', '');
+    await userEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
+    expect(screen.getByLabelText(/^Nhập lại email/)).toHaveAccessibleDescription('Bắt buộc nhập.');
+    await userEvent.type(screen.getByLabelText(/^Nhập lại email/), ' MOI@Racehorse.example ');
+    await userEvent.click(screen.getByRole('button', { name: 'Tạo tài khoản' }));
+    expect(api.createAccount).toHaveBeenCalledTimes(1);
+  });
+
+  test('AC-518 a pending row shows its status with resend, correct email and deactivate, and no role selector', async () => {
+    vitest.mocked(api.accounts).mockResolvedValue(pageOf([{ ...pendingGroom, role: 'VETERINARIAN' }]) as never);
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    expect(await screen.findByText('Chờ kích hoạt')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Gửi lại mã kích hoạt cho Groom Mới' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Sửa email/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Vô hiệu hóa' })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Đổi vai trò/)).not.toBeInTheDocument();
+  });
+
+  test('AC-519 a pending Groom can have the schedule edited but not leave recorded', async () => {
+    vitest.mocked(api.accounts).mockResolvedValue(pageOf([pendingGroom]) as never);
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    expect(await screen.findByRole('button', { name: 'Sửa lịch làm của Groom Mới' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ghi nghỉ phép cho Groom Mới' })).not.toBeInTheDocument();
+  });
+
+  test('AC-512 resend calls the service and a refusal that comes too soon is shown as a banner', async () => {
+    vitest.mocked(api.accounts).mockResolvedValue(pageOf([pendingGroom]) as never);
+    vitest.mocked(api.resendActivationCode).mockResolvedValueOnce(pendingGroom as never).mockRejectedValueOnce(
+      new ApiError(429, 'TOO_MANY_REQUESTS', 'Vui lòng thử lại sau 40 giây.', { retryAfterSeconds: '40' }),
+    );
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Gửi lại mã kích hoạt cho Groom Mới' }));
+    expect(api.resendActivationCode).toHaveBeenCalledWith(9);
+    await userEvent.click(screen.getByRole('button', { name: 'Gửi lại mã kích hoạt cho Groom Mới' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Vui lòng thử lại sau 40 giây.');
+  });
+
+  test('deactivating a pending account says the invitation is cancelled', async () => {
+    vitest.mocked(api.accounts).mockResolvedValue(pageOf([pendingGroom]) as never);
+    vitest.mocked(api.deactivate).mockResolvedValue({ ...pendingGroom, pending: false } as never);
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Vô hiệu hóa' }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toHaveTextContent('Lời mời sẽ bị hủy');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Vô hiệu hóa' }));
+    expect(api.deactivate).toHaveBeenCalledWith(9);
+  });
+});
+
 describe('Groom barn hours and leave (BR-166, BR-167)', () => {
   async function fillGroom() {
     await userEvent.type(screen.getByLabelText(/^Email/), 'groom@racehorse.example');
+    await userEvent.type(screen.getByLabelText(/^Nhập lại email/), 'groom@racehorse.example');
     await userEvent.type(screen.getByLabelText(/^Họ tên/), 'Groom An');
+    await userEvent.click(screen.getByRole('radio', { name: /Đặt mật khẩu ngay/ }));
     await userEvent.type(screen.getByLabelText(/^Mật khẩu/), 'password-123');
     await userEvent.selectOptions(screen.getByLabelText(/^Vai trò/), 'GROOM');
   }

@@ -189,7 +189,9 @@ test('setup: accounts and one horse for the UI checks', async ({ page }) => {
   for (const [role, p] of Object.entries(people)) {
     await page.getByRole('link', { name: 'Tài khoản' }).click();
     await page.getByLabel(/^Email/).fill(p.email);
+    await page.getByLabel(/^Nhập lại email/).fill(p.email);
     await page.getByLabel(/^Họ tên/).fill(p.name);
+    await page.getByRole('radio', { name: /Đặt mật khẩu ngay/ }).click();
     await page.getByLabel(/^Mật khẩu/).fill(p.password);
     await page.getByLabel(/^Vai trò/).selectOption(role);
     await page.getByRole('button', { name: 'Tạo tài khoản' }).click();
@@ -198,7 +200,7 @@ test('setup: accounts and one horse for the UI checks', async ({ page }) => {
     await expect(page.getByRole('cell', { name: p.email, exact: true })).toBeVisible();
     await page.getByPlaceholder('Tìm theo họ tên hoặc email').fill('');
   }
-  await page.getByRole('link', { name: 'Ngựa' }).click();
+  await page.getByRole('link', { name: 'Ngựa', exact: true }).click();
   await page.getByRole('link', { name: 'Đăng ký ngựa' }).first().click();
   await page.getByLabel(/^Tên ngựa/).fill(horseName);
   // The registration number is generated and has no field (BR-192).
@@ -330,10 +332,12 @@ test('stable care: a Groom ticks a chore, the Club Manager sets a stall and deci
   await page.getByRole('button', { name: `Đề xuất bổ sung ${item}` }).click();
   await page.getByLabel(/^Số lượng cần bổ sung/).fill('200');
   await page.getByRole('button', { name: 'Gửi đề xuất' }).click();
+  // The Groom's own proposals are their own tab.
+  await page.getByRole('button', { name: 'Đề xuất của bạn', exact: true }).click();
   await expect(page.getByText('Chờ duyệt').first()).toBeVisible();
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
   await signIn(page, admin.email, admin.password);
-  await page.goto('/supplies');
+  await page.goto('/supplies?tab=pending');
   await page.getByRole('button', { name: `Duyệt đề xuất ${item}` }).click();
   // Approving asks for a confirmation first.
   await page.locator('[role=alertdialog],[role=dialog]').getByRole('button', { name: 'Duyệt', exact: true }).click();
@@ -342,7 +346,7 @@ test('stable care: a Groom ticks a chore, the Club Manager sets a stall and deci
   await page.getByRole('button', { name: 'Đăng xuất' }).click();
   // The Groom sees the decision on their own proposals.
   await signIn(page, people.GROOM.email, people.GROOM.password);
-  await page.goto('/supplies');
+  await page.goto('/supplies?tab=mine');
   await expect(page.getByText('Đã duyệt').first()).toBeVisible();
 });
 

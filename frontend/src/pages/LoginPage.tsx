@@ -23,6 +23,7 @@ export default function LoginPage() {
   const { login, endedReason, clearEndedReason } = useAuth();
   const location = useLocation();
   const passwordReset = (location.state as { passwordReset?: boolean } | null)?.passwordReset === true;
+  const activated = (location.state as { activated?: boolean } | null)?.activated === true;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -67,9 +68,9 @@ export default function LoginPage() {
             <h2 className="text-h2">{vi.auth.formTitle}</h2>
             <p className="text-sm text-muted-foreground">{vi.auth.formHint}</p>
           </div>
-          {passwordReset && (
+          {(passwordReset || activated) && (
             <Callout tone="success" icon={CircleCheck} role="status">
-              {vi.auth.passwordResetDone}
+              {activated ? vi.activation.done : vi.auth.passwordResetDone}
             </Callout>
           )}
           <FormField label={vi.auth.email}>
@@ -112,6 +113,9 @@ export default function LoginPage() {
           </Button>
           <Link to="/forgot-password" className="justify-self-center text-sm text-primary underline-offset-4 hover:underline">
             {vi.auth.forgotPassword}
+          </Link>
+          <Link to="/activate" className="justify-self-center text-sm text-primary underline-offset-4 hover:underline">
+            {vi.activation.link}
           </Link>
         </form>
       </section>

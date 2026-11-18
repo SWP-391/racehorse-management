@@ -27,4 +27,14 @@ describe('sign-in and the forgotten password (BR-210, BR-216)', () => {
     renderAt({ pathname: '/', state: { passwordReset: true } });
     expect(screen.getByRole('status')).toHaveTextContent('Đã đặt lại mật khẩu. Hãy đăng nhập bằng mật khẩu mới.');
   });
+
+  test('a link opens the activation page and after an activation the page says so', () => {
+    renderAt('/');
+    expect(screen.getByRole('link', { name: 'Kích hoạt tài khoản' })).toHaveAttribute('href', '/activate');
+  });
+
+  test('after an activation the page says the account is active', () => {
+    renderAt({ pathname: '/', state: { activated: true } });
+    expect(screen.getByRole('status')).toHaveTextContent('Tài khoản đã được kích hoạt.');
+  });
 });

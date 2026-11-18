@@ -1,6 +1,6 @@
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, useLocation, useSearchParams } from 'react-router-dom';
 import { vi as vitest } from 'vitest';
 import { usePagedList } from './usePagedList';
 import { pageOf } from '../test/page';
@@ -10,8 +10,10 @@ const fetcher = vitest.fn();
 function Harness() {
   const list = usePagedList(fetcher, { filters: ['status'] });
   const location = useLocation();
+  const [, setParams] = useSearchParams();
   return (
     <div>
+      <button onClick={() => setParams((p) => new URLSearchParams({ ...Object.fromEntries(p), tab: 'units' }), { replace: true })}>tab</button>
       <input aria-label="search" value={list.query} onChange={(e) => list.setQuery(e.target.value)} />
       <button onClick={() => list.setFilter('status', 'ELIGIBLE')}>filter</button>
       <button onClick={() => list.setPage(list.page + 1)}>next</button>
@@ -38,6 +40,24 @@ describe('paged list hook (TECH-177, BR-185)', () => {
     renderAt();
     await vitest.waitFor(() => expect(fetcher).toHaveBeenCalled());
     expect(fetcher).toHaveBeenLastCalledWith({ status: '', q: '', page: 0, size: 20 });
+  });
+
+  test('a tab chosen while the search is still waiting is kept when the search lands', async () => {
+    renderAt();
+    await vitest.waitFor(() => expect(fetcher).toHaveBeenCalled());
+    vitest.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      await userEvent.type(screen.getByLabelText('search'), 'sam');
+      await userEvent.click(screen.getByRole('button', { name: 'tab' }));
+      await act(async () => {
+        await vitest.advanceTimersByTimeAsync(350);
+      });
+    } finally {
+      vitest.useRealTimers();
+    }
+    const url = new URLSearchParams(screen.getByLabelText('url').textContent ?? '');
+    expect(url.get('tab')).toBe('units');
+    expect(url.get('q')).toBe('sam');
   });
 
   test('search is sent 300 ms after typing stops and returns to page 0', async () => {

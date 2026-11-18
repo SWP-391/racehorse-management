@@ -60,7 +60,8 @@ export type Permission =
   | 'SET_PRICES_AND_CLOSE_MONTH'
   | 'VIEW_BILLING'
   | 'PAY_INVOICE'
-  | 'MANAGE_PAYMENTS';
+  | 'MANAGE_PAYMENTS'
+  | 'MESSAGING';
 
 export type RationItemType = 'GRAIN' | 'HAY' | 'VITAMIN';
 export const RATION_ITEM_TYPES: RationItemType[] = ['GRAIN', 'HAY', 'VITAMIN'];
@@ -188,6 +189,8 @@ export interface Account {
   displayName: string;
   role: Role;
   active: boolean;
+  /** Invited and not yet activated: it cannot sign in until its owner uses the mailed code (BR-236). */
+  pending: boolean;
   createdAt: string;
   /** Only in the list and only for a Groom: false flags "Chưa có lịch làm" (BR-162). */
   hasSchedule?: boolean;
@@ -1044,4 +1047,110 @@ export interface Timetable {
   from: string;
   to: string;
   days: TimetableDay[];
+}
+
+// inbox of conversations between allowed roles (BR-227 to BR-234)
+export interface ConversationHorse {
+  id: number;
+  name: string;
+}
+
+/** Someone the caller may write to: a person, or the Club Manager role (`clubManagers`, no `accountId`). */
+export interface ConversationRecipient {
+  accountId: number | null;
+  name: string;
+  role: Role;
+  clubManagers: boolean;
+}
+
+export interface RecipientOptions {
+  horses: ConversationHorse[];
+  recipients: ConversationRecipient[];
+}
+
+export type ConversationState = 'OPEN' | 'CLOSED';
+
+export type ConversationKind = 'MESSAGE' | 'FEEDBACK';
+
+export interface ConversationRow {
+  id: number;
+  kind: ConversationKind;
+  threadKey: string;
+  subject: string;
+  horseName: string | null;
+  state: ConversationState;
+  with: string;
+  preview: string;
+  lastAt: string;
+  unread: number;
+}
+
+export interface ChatMessage {
+  id: number;
+  authorId: number;
+  authorName: string;
+  text: string;
+  sentAt: string;
+  mine: boolean;
+}
+
+export interface ConversationDetail {
+  id: number;
+  subject: string;
+  horseId: number | null;
+  horseName: string | null;
+  state: ConversationState;
+  with: string;
+  stateBy: string | null;
+  stateAt: string | null;
+  messages: ChatMessage[];
+  kind: ConversationKind;
+  threadKey: string;
+}
+
+/** One chat with one person (the Club Manager role counts as one person). */
+export interface ThreadRow {
+  key: string;
+  name: string;
+  role: string;
+  preview: string;
+  lastAt: string;
+  unread: number;
+  topics: number;
+  openTopics: number;
+  hasFeedback: boolean;
+}
+
+export interface ThreadTopic {
+  id: number;
+  subject: string;
+  horseName: string | null;
+  kind: ConversationKind;
+  state: ConversationState;
+  stateBy: string | null;
+  stateAt: string | null;
+}
+
+export interface ThreadMessage extends ChatMessage {
+  conversationId: number;
+  /** The first message of a feedback conversation: shown highlighted. */
+  feedback: boolean;
+}
+
+export interface ThreadDetail {
+  key: string;
+  name: string;
+  role: string;
+  topics: ThreadTopic[];
+  messages: ThreadMessage[];
+  openTopicId: number | null;
+}
+
+export interface StartConversationInput {
+  subject: string;
+  text: string;
+  horseId: number | null;
+  recipientId: number | null;
+  toClubManagers: boolean;
+  kind?: ConversationKind;
 }

@@ -7,6 +7,7 @@ import type { Me, Permission, Role } from '../api/types';
 /** Mirrors the service's Permission enum per role (ba/09-permission-matrix.md). */
 const PERMISSIONS: Record<Role, Permission[]> = {
   HEAD_TRAINER: [
+    'MESSAGING',
     'VIEW_RATION',
     'VIEW_HORSES',
     'MANAGE_PLANS',
@@ -31,6 +32,7 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'VIEW_OWN_TIMETABLE',
   ],
   VETERINARIAN: [
+    'MESSAGING',
     'COMPOSE_RATION',
     'VIEW_RATION',
     'VIEW_HORSES',
@@ -52,6 +54,7 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'VIEW_BARN',
   ],
   GROOM: [
+    'MESSAGING',
     'VIEW_RATION',
     'SEND_INCIDENTS',
     'VIEW_HORSE_OPTIONS',
@@ -66,6 +69,7 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'VIEW_OWN_TIMETABLE',
   ],
   HORSE_OWNER: [
+    'MESSAGING',
     'VIEW_RATION',
     'VIEW_HORSES',
     'VIEW_PLANS',
@@ -78,6 +82,7 @@ const PERMISSIONS: Record<Role, Permission[]> = {
     'PAY_INVOICE',
   ],
   CLUB_MANAGER: [
+    'MESSAGING',
     'VIEW_RATION',
     'VIEW_HORSES',
     'MANAGE_HORSES',

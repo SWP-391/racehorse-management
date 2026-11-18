@@ -354,6 +354,7 @@ test.describe('Club Manager forms refuse invalid input before sending', () => {
     await page.goto('/accounts');
     await page.getByLabel(/^Email/).fill('x');
     await page.getByLabel(/^Họ tên/).fill('');
+    await page.getByRole('radio', { name: /Đặt mật khẩu ngay/ }).click();
     await page.getByLabel(/^Mật khẩu/).fill('short');
     await page.getByRole('button', { name: 'Tạo tài khoản' }).click();
     await expect(page.getByLabel(/^Họ tên/)).toHaveAttribute('aria-invalid', 'true');

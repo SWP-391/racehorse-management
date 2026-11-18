@@ -84,3 +84,23 @@ describe('client session end (BR-191, TECH-126)', () => {
     expect(screen.getByText('out | no-reason | no-landing')).toBeInTheDocument();
   });
 });
+
+describe('refreshMe (BR-239)', () => {
+  test('reads the signed-in person again so a changed name shows without signing out', async () => {
+    vitest.mocked(api.me).mockResolvedValue({ ...meAs('CLUB_MANAGER'), displayName: 'Tên mới' });
+    let shown = '';
+    function Name() {
+      auth = useAuth();
+      shown = auth.me?.displayName ?? '';
+      return <p>{shown}</p>;
+    }
+    render(
+      <AuthProvider initial={meAs('CLUB_MANAGER')}>
+        <Name />
+      </AuthProvider>,
+    );
+    expect(screen.getByText('Test CLUB_MANAGER')).toBeInTheDocument();
+    await act(async () => auth.refreshMe());
+    expect(screen.getByText('Tên mới')).toBeInTheDocument();
+  });
+});

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Ban, CalendarClock, CalendarOff, CircleAlert, CircleCheck, Clock, Mail, Send, ShieldOff, Users } from 'lucide-react';
+import { Ban, CalendarClock, CalendarOff, CircleAlert, CircleCheck, Clock, Mail, Pencil, Send, ShieldOff, Users } from 'lucide-react';
 import { api } from '../api/api';
 import { ApiError } from '../api/client';
 import { ROLES, type Account, type Role, type ScheduleRange } from '../api/types';
@@ -8,6 +8,7 @@ import { vi } from '../i18n/vi';
 import { usePagedList } from '../hooks/usePagedList';
 import { notify } from '../lib/notify';
 import { AccountEmailDialog } from '../components/AccountEmailDialog';
+import { AccountNameDialog } from '../components/AccountNameDialog';
 import { GroomScheduleDialog } from '../components/GroomScheduleDialog';
 import { LeaveDialog } from '../components/LeaveDialog';
 import { ScheduleEditor, toServiceRanges } from '../components/ScheduleEditor';
@@ -35,7 +36,7 @@ const EMPTY_FORM = { email: '', emailRepeat: '', displayName: '', password: '', 
  * barn hours when created or later, and the Club Manager records leave (BR-166, BR-167).
  */
 export default function AccountsPage() {
-  const { can, me } = useAuth();
+  const { can, me, refreshMe } = useAuth();
   const allowed = can('MANAGE_ACCOUNTS');
   const list = usePagedList((query) => api.accounts(query), { filters: ['role'], enabled: allowed });
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +47,7 @@ export default function AccountsPage() {
   const [scheduleOf, setScheduleOf] = useState<Account | null>(null);
   const [leaveOf, setLeaveOf] = useState<Account | null>(null);
   const [emailOf, setEmailOf] = useState<Account | null>(null);
+  const [nameOf, setNameOf] = useState<Account | null>(null);
 
   if (!allowed) {
     return (
@@ -241,6 +243,11 @@ export default function AccountsPage() {
               {vi.accounts.resendCode}
             </Button>
           )}
+          {/* Any account, the signed-in person's own included, can be renamed (BR-239). */}
+          <Button type="button" variant="outline" size="sm" aria-label={`${vi.accounts.renameAccount} ${a.displayName}`} onClick={() => setNameOf(a)}>
+            <Pencil aria-hidden />
+            {vi.accounts.renameAccount}
+          </Button>
           {/* Nobody changes their own email (BR-212), so the signed-in person's row has no email button. */}
           {a.id !== me?.id && (
             <Button type="button" variant="outline" size="sm" aria-label={`${a.email ? vi.accounts.correctEmail : vi.accounts.enterEmail} ${a.displayName}`} onClick={() => setEmailOf(a)}>
@@ -384,6 +391,15 @@ export default function AccountsPage() {
       </div>
       <GroomScheduleDialog groom={scheduleOf} onClose={() => setScheduleOf(null)} onSaved={() => void list.load.reload()} />
       <LeaveDialog groom={leaveOf} onClose={() => setLeaveOf(null)} />
+      <AccountNameDialog
+        account={nameOf}
+        onClose={() => setNameOf(null)}
+        onSaved={(renamed) => {
+          void list.load.reload();
+          // The header shows the signed-in person's name, so it is read again after their own rename (BR-239).
+          if (renamed.id === me?.id) void refreshMe().catch(() => undefined);
+        }}
+      />
       <AccountEmailDialog account={emailOf} onClose={() => setEmailOf(null)} onSaved={() => void list.load.reload()} />
     </>
   );

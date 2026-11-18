@@ -13,6 +13,8 @@ vitest.mock('../api/api', () => ({
     createAccount: vitest.fn(),
     changeRole: vitest.fn(),
     changeEmail: vitest.fn(),
+    renameAccount: vitest.fn(),
+    me: vitest.fn(),
     deactivate: vitest.fn(),
     resendActivationCode: vitest.fn(),
     groomSchedule: vitest.fn(),
@@ -397,5 +399,87 @@ describe('the email of an account (BR-212, AC-468, AC-484 to AC-486)', () => {
     await screen.findByText('admin@racehorse.example');
     expect(screen.queryByRole('button', { name: 'Sửa email Quản lý CLB' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sửa email Huấn luyện viên A' })).toBeInTheDocument();
+  });
+});
+
+describe('rename an account (BR-239, AC-521..AC-529)', () => {
+  const own = { ...account, id: 1, email: 'admin@racehorse.example', displayName: 'Quản lý CLB', role: 'CLUB_MANAGER' };
+  const gone = { ...account, id: 9, email: 'gone@racehorse.example', displayName: 'Đã nghỉ', active: false };
+  const waiting = { ...account, id: 10, email: 'wait@racehorse.example', displayName: 'Chờ A', active: false, pending: true };
+
+  beforeEach(() => {
+    vitest.mocked(api.renameAccount).mockReset().mockResolvedValue(account as never);
+    vitest.mocked(api.me).mockReset().mockResolvedValue({ id: 1, email: own.email, displayName: 'Tên mới', role: 'CLUB_MANAGER', permissions: [] } as never);
+    vitest.mocked(api.accounts).mockResolvedValue(pageOf([own, account, gone, waiting]) as never);
+  });
+
+  test('every row has the rename button: own row, deactivated row and pending row included', async () => {
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    await screen.findByText('admin@racehorse.example');
+    for (const name of ['Quản lý CLB', 'Huấn luyện viên A', 'Đã nghỉ', 'Chờ A']) {
+      expect(screen.getByRole('button', { name: `Sửa tên ${name}` })).toBeInTheDocument();
+    }
+  });
+
+  test('the popup starts with the current name and saves the typed name, then the list reloads', async () => {
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Sửa tên Huấn luyện viên A' }));
+    const dialog = await screen.findByRole('dialog');
+    const input = within(dialog).getByLabelText(/^Họ tên/) as HTMLInputElement;
+    expect(input.value).toBe('Huấn luyện viên A');
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Nguyễn Văn A');
+    const calls = vitest.mocked(api.accounts).mock.calls.length;
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu tên' }));
+    await waitFor(() => expect(api.renameAccount).toHaveBeenCalledWith(7, { displayName: 'Nguyễn Văn A' }));
+    await waitFor(() => expect(vitest.mocked(api.accounts).mock.calls.length).toBeGreaterThan(calls));
+    expect(api.me).not.toHaveBeenCalled();
+  });
+
+  test('AC-526 a blank name is refused on the field and nothing is sent', async () => {
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Sửa tên Huấn luyện viên A' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.clear(within(dialog).getByLabelText(/^Họ tên/));
+    await userEvent.type(within(dialog).getByLabelText(/^Họ tên/), '   ');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu tên' }));
+    expect(within(dialog).getByLabelText(/^Họ tên/)).toHaveAccessibleDescription('Bắt buộc nhập.');
+    expect(api.renameAccount).not.toHaveBeenCalled();
+  });
+
+  test('AC-527 a name over 200 characters is refused before sending', async () => {
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Sửa tên Huấn luyện viên A' }));
+    const dialog = await screen.findByRole('dialog');
+    const input = within(dialog).getByLabelText(/^Họ tên/);
+    await userEvent.clear(input);
+    await userEvent.click(input);
+    await userEvent.paste('a'.repeat(201));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu tên' }));
+    expect(within(dialog).getByLabelText(/^Họ tên/)).toHaveAccessibleDescription('Tên tối đa 200 ký tự.');
+    expect(api.renameAccount).not.toHaveBeenCalled();
+  });
+
+  test('a refusal of the service is shown on the name field', async () => {
+    vitest.mocked(api.renameAccount).mockRejectedValue(
+      new ApiError(400, 'NAME_TOO_LONG', 'Tên tối đa 200 ký tự.', { displayName: 'Tên tối đa 200 ký tự.' }),
+    );
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Sửa tên Huấn luyện viên A' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText(/^Họ tên/), ' B');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu tên' }));
+    expect(await within(dialog).findByLabelText(/^Họ tên/)).toHaveAccessibleDescription('Tên tối đa 200 ký tự.');
+  });
+
+  test('AC-522 renaming one’s own account reads the signed-in person again so the header follows', async () => {
+    renderAs('CLUB_MANAGER', <AccountsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Sửa tên Quản lý CLB' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.clear(within(dialog).getByLabelText(/^Họ tên/));
+    await userEvent.type(within(dialog).getByLabelText(/^Họ tên/), 'Tên mới');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Lưu tên' }));
+    await waitFor(() => expect(api.renameAccount).toHaveBeenCalledWith(1, { displayName: 'Tên mới' }));
+    await waitFor(() => expect(api.me).toHaveBeenCalledTimes(1));
   });
 });

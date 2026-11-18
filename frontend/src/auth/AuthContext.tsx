@@ -10,6 +10,8 @@ interface AuthState {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Reads the signed-in person again, for example after they renamed their own account (BR-239). */
+  refreshMe: () => Promise<void>;
   can: (permission: Permission) => boolean;
   /** Why the person is back at sign-in without having signed out (BR-191); null when they signed out themselves. */
   endedReason: string | null;
@@ -86,6 +88,10 @@ export function AuthProvider({ children, initial, onSignedOut }: { children: Rea
     onSignedOut?.();
   }, [onSignedOut]);
 
+  const refreshMe = useCallback(async () => {
+    setMe(await api.me());
+  }, []);
+
   const clearEndedReason = useCallback(() => setEndedReason(null), []);
   const consumeLanding = useCallback(() => setLanding(null), []);
 
@@ -95,13 +101,14 @@ export function AuthProvider({ children, initial, onSignedOut }: { children: Rea
       loading,
       login,
       logout,
+      refreshMe,
       can: (p) => !!me?.permissions.includes(p),
       endedReason,
       clearEndedReason,
       landing,
       consumeLanding,
     }),
-    [me, loading, login, logout, endedReason, clearEndedReason, landing, consumeLanding],
+    [me, loading, login, logout, refreshMe, endedReason, clearEndedReason, landing, consumeLanding],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -126,6 +126,8 @@ export const api = {
   createAccount: (input: { email: string; displayName: string; password?: string; roles: Role[]; schedule?: ScheduleRange[] }) =>
     request<Account>('POST', '/api/accounts', input),
   resendActivationCode: (id: number) => request<Account>('POST', `/api/accounts/${id}/activation-code`),
+  /** The Club Manager changes the display name of any account, their own included (BR-239). */
+  renameAccount: (id: number, input: { displayName: string }) => request<Account>('PUT', `/api/accounts/${id}/name`, input),
   /** Enters the missing email of an account, or corrects it with a reason (BR-212). */
   changeEmail: (id: number, input: { email: string; reason?: string }) =>
     request<Account>('PUT', `/api/accounts/${id}/email`, input),

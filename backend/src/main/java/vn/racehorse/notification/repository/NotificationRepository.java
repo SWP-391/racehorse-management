@@ -11,4 +11,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     List<Notification> findByRecipientIdOrderByCreatedAtDescIdDesc(Long recipientId, Pageable page);
 
     long countByRecipientIdAndReadAtIsNull(Long recipientId);
+
+    /** Unread notices of one person that point at one link, cleared when the target is opened (BR-233). */
+    List<Notification> findByRecipientIdAndLinkAndReadAtIsNull(Long recipientId, String link);
 }

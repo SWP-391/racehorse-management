@@ -129,7 +129,9 @@ public enum Permission {
     /** PERM-059 View the payment QR and payment status of an own invoice and pay it (BR-218, DEC-073). */
     PAY_INVOICE("PERM-059", Role.HORSE_OWNER),
     /** PERM-060 View received payments and unmatched transfers, assign an unmatched transfer with a reason (BR-222). */
-    MANAGE_PAYMENTS("PERM-060", Role.CLUB_MANAGER);
+    MANAGE_PAYMENTS("PERM-060", Role.CLUB_MANAGER),
+    /** PERM-061 Start, read, answer, close and reopen conversations with the people BR-228 allows (DEC-075). */
+    MESSAGING("PERM-061", Role.HEAD_TRAINER, Role.VETERINARIAN, Role.GROOM, Role.HORSE_OWNER, Role.CLUB_MANAGER);
 
     private final String baId;
     private final Set<Role> allowed;

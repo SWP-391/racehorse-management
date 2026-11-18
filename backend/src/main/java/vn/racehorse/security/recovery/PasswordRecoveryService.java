@@ -72,16 +72,50 @@ public class PasswordRecoveryService {
         enforcePace(email, now);
         requests.save(new PasswordRecoveryRequest(email.value(), now));
 
-        Optional<UserAccount> account = accounts.findByEmail(email.value()).filter(UserAccount::isActive);
+        Optional<UserAccount> account = accounts.findByEmail(email.value()).filter(PasswordRecoveryService::canReceiveCode);
         String code = newCode();
         String hash = encoder.encode(code); // an unknown address hashes too, so the time is the same
         if (account.isPresent()) {
-            Long id = account.get().getId();
-            recoveries.voidLive(id);
-            recoveries.save(new PasswordRecovery(id, hash, now, now.plus(CODE_TTL)));
-            afterCommit(() -> mail.dispatch(email, code));
+            save(account.get(), hash, now);
+            RecoveryPurpose purpose = purposeOf(account.get());
+            afterCommit(() -> mail.dispatch(email, code, purpose));
         }
         return new Answer(SENT_MESSAGE, (int) CODE_TTL.toSeconds(), (int) MIN_GAP.toSeconds());
+    }
+
+    /** A pending account is invited, not yet usable: it receives an activation code, not a reset code (BR-237). */
+    private static boolean canReceiveCode(UserAccount account) {
+        return account.isActive() || account.isPending();
+    }
+
+    private static RecoveryPurpose purposeOf(UserAccount account) {
+        return account.isPending() ? RecoveryPurpose.ACTIVATION : RecoveryPurpose.RESET;
+    }
+
+    /** Voids the live code of the account and keeps a new one; the purpose follows the state of the account. */
+    private void save(UserAccount account, String hash, Instant now) {
+        RecoveryPurpose purpose = purposeOf(account);
+        recoveries.voidLive(account.getId());
+        recoveries.save(new PasswordRecovery(account.getId(), hash, now, now.plus(purpose.ttl()), purpose));
+    }
+
+    /**
+     * Mails a new activation code to a pending account: at creation, on a resend by the Club Manager and after the
+     * correction of its email (BR-237, BR-238). Every call counts toward the pace of the address; a resend is also held
+     * to it. The code never leaves this method except by mail, after the commit.
+     */
+    @Transactional
+    public void issueActivation(UserAccount account, boolean held) {
+        EmailAddress email = EmailAddress.parse(account.getEmail());
+        Instant now = clock.now();
+        requests.lockAddress(email.value());
+        if (held) {
+            enforcePace(email, now);
+        }
+        requests.save(new PasswordRecoveryRequest(email.value(), now));
+        String code = newCode();
+        save(account, encoder.encode(code), now);
+        afterCommit(() -> mail.dispatch(email, code, RecoveryPurpose.ACTIVATION));
     }
 
     /** A refused confirmation still records its wrong try or void, so the exception does not roll back (BR-215). */
@@ -89,7 +123,7 @@ public class PasswordRecoveryService {
     public void confirm(String emailText, String code, String newPassword) {
         Instant now = clock.now();
         Optional<UserAccount> found = EmailAddress.tryParse(emailText)
-                .flatMap(e -> accounts.findByEmail(e.value())).filter(UserAccount::isActive);
+                .flatMap(e -> accounts.findByEmail(e.value())).filter(PasswordRecoveryService::canReceiveCode);
         if (found.isEmpty()) {
             encoder.matches(code == null ? "" : code, dummyHash());
             throw codeRefused();
@@ -113,6 +147,12 @@ public class PasswordRecoveryService {
         }
         recovery.spend();
         recoveries.save(recovery);
+        if (account.isPending()) {
+            account.activate(encoder.encode(newPassword));
+            accounts.save(account);
+            audit.recordSystem("ACCOUNT_ACTIVATED", "ACCOUNT", account.getId(), Map.of("email", EmailAddress.mask(account.getEmail())));
+            return;
+        }
         account.resetPassword(encoder.encode(newPassword));
         accounts.save(account);
         audit.recordSystem("PASSWORD_RESET", "ACCOUNT", account.getId(), Map.of("email", EmailAddress.mask(account.getEmail())));

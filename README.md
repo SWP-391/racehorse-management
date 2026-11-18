@@ -18,6 +18,7 @@ A web application for managing a racehorse training club: horses, training plans
 - **Stable operations** — stable areas and stalls, Groom barn hours and leave, daily chores.
 - **Stock & medicine** — supply inventory with a stock ledger, restock forecasting, low-stock alerts.
 - **Billing** — service price list, per-horse cost tracking, monthly owner invoices.
+- **Hộp thư (inbox)** — conversations between the roles that work together, for example an owner sending feedback or a request to the Club Manager. Text only, never edited or deleted; each new message gives the others an in-app notification and an unread count. Who may write to whom: every role to the Club Manager; owner with the trainer of their horse and with a veterinarian who examined it; veterinarian with the trainer of a horse; groom with a head trainer.
 
 ## Prerequisites
 
@@ -36,7 +37,7 @@ BOOTSTRAP_EMAIL='admin@racehorse.example' BOOTSTRAP_PASSWORD='choose-a-password'
 # 3. Open http://localhost:5173 and sign in with that email and password
 ```
 
-The first Club Manager account is created at first start-up from `BOOTSTRAP_EMAIL` / `BOOTSTRAP_PASSWORD`; the email is what the person signs in with. Other accounts are created by a Club Manager afterwards, each with one email. A forgotten password is recovered with a code sent to that email through the HTTPS API of Brevo (`BREVO_API_KEY`, `MAIL_FROM`, `MAIL_FROM_NAME`).
+The first Club Manager account is created at first start-up from `BOOTSTRAP_EMAIL` / `BOOTSTRAP_PASSWORD`; the email is what the person signs in with. Other accounts are created by a Club Manager afterwards, each with one email. By default the Club Manager gives no password: the account waits as "Chờ kích hoạt" and the person activates it on the page `/activate` with a code (valid 24 hours) mailed to that email; the Club Manager can resend the code or correct the email. "Đặt mật khẩu ngay" keeps the old way for accounts without a mailbox, such as the demo accounts. A forgotten password is recovered with a code sent to that email through the HTTPS API of Brevo (`BREVO_API_KEY`, `MAIL_FROM`, `MAIL_FROM_NAME`).
 
 To run the client outside Docker: `docker compose up -d db`, run the jar with `java -jar backend/target/*.jar` (Java 21), then `cd frontend && npm install && npm run dev`.
 

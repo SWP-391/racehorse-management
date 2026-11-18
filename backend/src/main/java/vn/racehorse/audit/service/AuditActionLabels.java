@@ -19,6 +19,8 @@ public final class AuditActionLabels {
         Map.entry("ROLE_CHANGED", "Đổi vai trò"),
         Map.entry("ACCOUNT_EMAIL_SET", "Đặt email"),
         Map.entry("ACCOUNT_EMAIL_CORRECTED", "Sửa email"),
+        Map.entry("ACCOUNT_ACTIVATED", "Kích hoạt tài khoản"),
+        Map.entry("ACTIVATION_CODE_SENT", "Gửi lại mã kích hoạt"),
         Map.entry("PASSWORD_RESET", "Đặt lại mật khẩu"),
         Map.entry("HORSE_REGISTERED", "Đăng ký ngựa"),
         Map.entry("HORSE_UPDATED", "Sửa hồ sơ ngựa"),

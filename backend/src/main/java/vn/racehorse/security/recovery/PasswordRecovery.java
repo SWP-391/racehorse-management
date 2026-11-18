@@ -42,10 +42,20 @@ public class PasswordRecovery {
     @Column(nullable = false)
     private RecoveryState state;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private RecoveryPurpose purpose = RecoveryPurpose.RESET;
+
     protected PasswordRecovery() {
     }
 
     public PasswordRecovery(Long accountId, String codeHash, Instant createdAt, Instant expiresAt) {
+        this(accountId, codeHash, createdAt, expiresAt, RecoveryPurpose.RESET);
+    }
+
+    public PasswordRecovery(Long accountId, String codeHash, Instant createdAt, Instant expiresAt,
+                            RecoveryPurpose purpose) {
+        this.purpose = purpose;
         this.accountId = accountId;
         this.codeHash = codeHash;
         this.createdAt = createdAt;
@@ -75,6 +85,10 @@ public class PasswordRecovery {
 
     public int getTries() {
         return tries;
+    }
+
+    public RecoveryPurpose getPurpose() {
+        return purpose;
     }
 
     public RecoveryState getState() {

@@ -7,7 +7,7 @@ import java.time.Instant;
 
 /** {@code hasSchedule} is set only in the list and only for a Groom: false flags "Chưa có lịch làm" (BR-162). */
 public record AccountDto(Long id, String email, String displayName, Role role, boolean active,
-                         Instant createdAt,
+                         boolean pending, Instant createdAt,
                          @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
                          Boolean hasSchedule) {
     public static AccountDto of(UserAccount a) {
@@ -16,6 +16,6 @@ public record AccountDto(Long id, String email, String displayName, Role role, b
 
     public static AccountDto of(UserAccount a, Boolean hasSchedule) {
         return new AccountDto(a.getId(), a.getEmail(), a.getDisplayName(), a.getRole(), a.isActive(),
-                a.getCreatedAt(), hasSchedule);
+                a.isPending(), a.getCreatedAt(), hasSchedule);
     }
 }

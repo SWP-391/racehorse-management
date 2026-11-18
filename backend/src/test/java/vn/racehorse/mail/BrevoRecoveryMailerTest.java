@@ -44,6 +44,16 @@ class BrevoRecoveryMailerTest {
     }
 
     @Test
+    void theActivationMailStatesTheCodeTwentyFourHoursAndTheIgnoreNotice() {
+        var purpose = vn.racehorse.security.recovery.RecoveryPurpose.ACTIVATION;
+        for (String text : new String[]{RecoveryMailText.plain("123456", purpose), RecoveryMailText.html("123456", purpose)}) {
+            assertThat(text).contains("123456").contains("24 giờ").contains("bỏ qua").contains("Kích hoạt tài khoản");
+            assertThat(text).doesNotContain("5 phút");
+        }
+        assertThat(RecoveryMailText.subject(purpose)).contains("kích hoạt");
+    }
+
+    @Test
     void postsTheMailToBrevoWithTheKeyTheSenderTheRecipientAndTheBody() {
         server.expect(requestTo(URL))
                 .andExpect(method(HttpMethod.POST))
@@ -99,7 +109,7 @@ class BrevoRecoveryMailerTest {
     @Test
     void theDispatcherSwallowsAFailureAndLogsOnlyTheMaskedAddress() {
         AtomicInteger calls = new AtomicInteger();
-        RecoveryMailer failing = (to, code) -> {
+        RecoveryMailer failing = (to, code, purpose) -> {
             calls.incrementAndGet();
             throw new IllegalStateException("Brevo refused the recovery mail: HTTP 500");
         };
@@ -118,7 +128,7 @@ class BrevoRecoveryMailerTest {
 
     @Test
     void aMailerThatThrowsAnIOExceptionStyleErrorIsStillContained() {
-        RecoveryMailer failing = (to, code) -> {
+        RecoveryMailer failing = (to, code, purpose) -> {
             throw new RuntimeException(new IOException("connection reset"));
         };
         assertThatCode(() -> new RecoveryMailDispatcher(failing, new SyncTaskExecutor(), false)
@@ -129,7 +139,7 @@ class BrevoRecoveryMailerTest {
     void whenAsyncTheMailGoesThroughTheExecutorAndAFullQueueNeverReachesTheCaller() throws Exception {
         java.util.List<Runnable> queued = new java.util.ArrayList<>();
         AtomicInteger sent = new AtomicInteger();
-        RecoveryMailer ok = (to, code) -> sent.incrementAndGet();
+        RecoveryMailer ok = (to, code, purpose) -> sent.incrementAndGet();
         var queueing = new RecoveryMailDispatcher(ok, queued::add, true);
         queueing.dispatch(EmailAddress.parse("tuan@racehorse.example"), "654321");
         assertThat(sent).hasValue(0);

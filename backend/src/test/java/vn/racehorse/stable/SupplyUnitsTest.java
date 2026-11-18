@@ -26,7 +26,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class SupplyUnitsTest extends StableTestBase {
 
     private String fresh() {
-        return "u" + Long.toString(System.nanoTime(), 36).replaceAll("[0-9]", "x").substring(0, 8);
+        // padded: a freshly started machine gives a clock value of seven base-36 digits only
+        return "u" + (Long.toString(System.nanoTime(), 36).replaceAll("[0-9]", "x") + "xxxxxxxx").substring(0, 8);
     }
 
     private JsonNode add(String name) throws Exception {

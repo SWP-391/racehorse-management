@@ -40,6 +40,10 @@ public class UserAccount {
     @Column(nullable = false)
     private boolean active = true;
 
+    /** Invited and not yet activated by its owner; such an account is never active (BR-236, TECH-231). */
+    @Column(nullable = false)
+    private boolean pending;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -52,6 +56,15 @@ public class UserAccount {
         this.passwordHash = passwordHash;
         this.role = role;
         this.createdAt = createdAt;
+    }
+
+    /** An account created without a password: pending, so it cannot be used until its owner activates it (BR-235). */
+    public static UserAccount invited(String email, String displayName, String unusablePasswordHash, Role role,
+                                      Instant createdAt) {
+        UserAccount account = new UserAccount(email, displayName, unusablePasswordHash, role, createdAt);
+        account.active = false;
+        account.pending = true;
+        return account;
     }
 
     public Long getId() {
@@ -87,6 +100,10 @@ public class UserAccount {
         return active;
     }
 
+    public boolean isPending() {
+        return pending;
+    }
+
     public Instant getCreatedAt() {
         return createdAt;
     }
@@ -105,7 +122,17 @@ public class UserAccount {
         this.passwordVersion++;
     }
 
+    /** Sets the first password of a pending account and makes it usable (BR-237). */
+    public void activate(String passwordHash) {
+        this.passwordHash = passwordHash;
+        this.passwordVersion++;
+        this.pending = false;
+        this.active = true;
+    }
+
+    /** Deactivating a pending account ends the invitation for good (BR-236). */
     public void deactivate() {
         this.active = false;
+        this.pending = false;
     }
 }

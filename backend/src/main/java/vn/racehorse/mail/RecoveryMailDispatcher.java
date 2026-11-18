@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.stereotype.Component;
 import vn.racehorse.account.EmailAddress;
+import vn.racehorse.security.recovery.RecoveryPurpose;
 
 import java.util.concurrent.RejectedExecutionException;
 
@@ -33,20 +34,24 @@ public class RecoveryMailDispatcher {
     }
 
     public void dispatch(EmailAddress to, String code) {
+        dispatch(to, code, RecoveryPurpose.RESET);
+    }
+
+    public void dispatch(EmailAddress to, String code, RecoveryPurpose purpose) {
         if (!async) {
-            send(to, code);
+            send(to, code, purpose);
             return;
         }
         try {
-            executor.execute(() -> send(to, code));
+            executor.execute(() -> send(to, code, purpose));
         } catch (RejectedExecutionException e) {
             log.error("recovery mail to {} was not queued: too many mails waiting", to.masked());
         }
     }
 
-    private void send(EmailAddress to, String code) {
+    private void send(EmailAddress to, String code, RecoveryPurpose purpose) {
         try {
-            mailer.send(to, code);
+            mailer.send(to, code, purpose);
         } catch (RuntimeException e) {
             log.error("recovery mail to {} failed: {}", to.masked(), e.getMessage());
         }

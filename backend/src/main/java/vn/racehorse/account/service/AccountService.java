@@ -19,10 +19,12 @@ import vn.racehorse.security.AccessGuard;
 import vn.racehorse.security.AccountPrincipal;
 import vn.racehorse.security.Permission;
 import vn.racehorse.security.recovery.PasswordRecoveryRepository;
+import vn.racehorse.security.recovery.PasswordRecoveryService;
 import vn.racehorse.schedule.dto.GroomScheduleRangeInput;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /** Accounts with exactly one role, managed by the Club Manager; deactivated, never deleted (BR-090). */
 @Service
@@ -38,11 +40,14 @@ public class AccountService {
     private final ApplicationEventPublisher events;
     private final GroomScheduleService schedules;
     private final PasswordRecoveryRepository recoveries;
+    private final PasswordRecoveryService recovery;
 
     public AccountService(UserAccountRepository accounts, PasswordEncoder passwordEncoder, AccessGuard access,
                           AuditService audit, ClubClock clock, ApplicationEventPublisher events,
-                          GroomScheduleService schedules, PasswordRecoveryRepository recoveries) {
+                          GroomScheduleService schedules, PasswordRecoveryRepository recoveries,
+                          PasswordRecoveryService recovery) {
         this.recoveries = recoveries;
+        this.recovery = recovery;
         this.events = events;
         this.schedules = schedules;
         this.accounts = accounts;
@@ -79,19 +84,43 @@ public class AccountService {
         if (accounts.existsByEmail(email)) {
             throw duplicateEmail();
         }
+        boolean invite = password == null || password.isBlank();
+        if (!invite && password.length() < 8) {
+            throw ApiException.invalid("VALIDATION_FAILED", "password", "Mật khẩu cần 8 ký tự trở lên.");
+        }
         UserAccount account;
         try {
-            account = accounts.saveAndFlush(new UserAccount(email, displayName,
-                    passwordEncoder.encode(password), role, clock.now()));
+            // An invited account gets a hash of a value nobody knows, so it cannot sign in before it is activated (BR-236).
+            account = accounts.saveAndFlush(invite
+                    ? UserAccount.invited(email, displayName, passwordEncoder.encode(UUID.randomUUID().toString()), role,
+                            clock.now())
+                    : new UserAccount(email, displayName, passwordEncoder.encode(password), role, clock.now()));
         } catch (DataIntegrityViolationException e) {
             // A concurrent create of the same email won the unique index between the check above and this insert (BR-090).
             throw duplicateEmail();
         }
         audit.record(actor, "ACCOUNT_CREATED", "ACCOUNT", account.getId(),
-                Map.of("email", email, "role", role.name()));
+                Map.of("email", email, "role", role.name(), "mode", invite ? "INVITE" : "PASSWORD"));
         if (schedule != null && !schedule.isEmpty()) {
             schedules.setOnCreate(actor, account, schedule);
         }
+        if (invite) {
+            recovery.issueActivation(account, false);
+        }
+        return account;
+    }
+
+    /** Mails a new activation code to a pending account, held to the pace of a recovery request (BR-238). */
+    @Transactional
+    public UserAccount resendActivationCode(Long id) {
+        AccountPrincipal actor = access.require(Permission.MANAGE_ACCOUNTS);
+        UserAccount account = accounts.findByIdForUpdate(id).orElseThrow(() -> ApiException.notFound("tài khoản"));
+        if (!account.isPending()) {
+            throw new ApiException(HttpStatus.CONFLICT, "NOT_PENDING", "Tài khoản này không ở trạng thái chờ kích hoạt.",
+                    Map.of("id", "Tài khoản này không ở trạng thái chờ kích hoạt."));
+        }
+        recovery.issueActivation(account, true);
+        audit.record(actor, "ACTIVATION_CODE_SENT", "ACCOUNT", account.getId(), Map.of("email", account.emailForAudit()));
         return account;
     }
 
@@ -135,6 +164,10 @@ public class AccountService {
             recoveries.voidLive(account.getId());
             audit.record(actor, "ACCOUNT_EMAIL_CORRECTED", "ACCOUNT", account.getId(),
                     Map.of("oldEmail", old, "newEmail", email, "reason", why));
+            if (account.isPending()) {
+                // The code sent to the old address is void; the new address gets a new one (BR-238).
+                recovery.issueActivation(account, false);
+            }
         }
         return account;
     }
@@ -183,7 +216,13 @@ public class AccountService {
         // Lock order: the active Club Managers (by id) first, then the target row, so two requests cannot lock crosswise.
         List<UserAccount> managers = accounts.lockActiveClubManagers();
         UserAccount account = accounts.findByIdForUpdate(id).orElseThrow(() -> ApiException.notFound("tài khoản"));
-        if (account.isActive()) {
+        if (account.isPending()) {
+            // Ends the invitation: the account never becomes active and the last code is void (BR-236).
+            account.deactivate();
+            recoveries.voidLive(account.getId());
+            audit.record(actor, "ACCOUNT_DEACTIVATED", "ACCOUNT", account.getId(),
+                    Map.of("email", account.emailForAudit(), "pending", "true"));
+        } else if (account.isActive()) {
             if (account.getRole() == Role.CLUB_MANAGER) {
                 requireAnotherClubManager(account, managers);
             }

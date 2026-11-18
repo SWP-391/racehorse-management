@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import vn.racehorse.account.EmailAddress;
 import vn.racehorse.mail.RecoveryMailer;
+import vn.racehorse.security.recovery.RecoveryPurpose;
 
 import java.util.List;
 import java.util.Optional;
@@ -16,18 +17,18 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class RecordingRecoveryMailer implements RecoveryMailer {
 
-    public record Sent(EmailAddress to, String code) {
+    public record Sent(EmailAddress to, String code, RecoveryPurpose purpose) {
     }
 
     private final List<Sent> sent = new CopyOnWriteArrayList<>();
     private volatile RuntimeException failure;
 
     @Override
-    public void send(EmailAddress to, String code) {
+    public void send(EmailAddress to, String code, RecoveryPurpose purpose) {
         if (failure != null) {
             throw failure;
         }
-        sent.add(new Sent(to, code));
+        sent.add(new Sent(to, code, purpose));
     }
 
     public List<Sent> sent() {

@@ -80,13 +80,14 @@ public class GroomScheduleService {
         return ranges(accountId);
     }
 
-    /** Replaces the whole schedule of an active Groom in one transaction (BR-166). */
+    /** Replaces the whole schedule of an active or pending Groom in one transaction (BR-166, BR-236). */
     @Transactional
     public List<GroomScheduleRange> replace(Long accountId, List<GroomScheduleRangeInput> input) {
         AccountPrincipal actor = access.require(Permission.MANAGE_SCHEDULES);
         UserAccount account = accounts.findByIdForUpdate(accountId).orElseThrow(() -> ApiException.notFound("tài khoản"));
-        if (account.getRole() != Role.GROOM || !account.isActive()) {
-            throw ApiException.invalid("VALIDATION_FAILED", "schedule", "Chỉ đặt lịch làm cho Groom đang hoạt động.");
+        // A pending Groom (invited, not yet activated) may have its schedule set and edited (BR-236, BR-166).
+        if (account.getRole() != Role.GROOM || !(account.isActive() || account.isPending())) {
+            throw ApiException.invalid("VALIDATION_FAILED", "schedule", "Chỉ đặt lịch làm cho Groom đang hoạt động hoặc chờ kích hoạt.");
         }
         return write(actor, account, input);
     }

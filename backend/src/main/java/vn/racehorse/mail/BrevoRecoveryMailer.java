@@ -9,6 +9,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import vn.racehorse.account.EmailAddress;
+import vn.racehorse.security.recovery.RecoveryPurpose;
 
 import java.time.Duration;
 import java.util.List;
@@ -54,16 +55,16 @@ public class BrevoRecoveryMailer implements RecoveryMailer {
     }
 
     @Override
-    public void send(EmailAddress to, String code) {
+    public void send(EmailAddress to, String code, RecoveryPurpose purpose) {
         if (!properties.configured()) {
             throw new IllegalStateException("BREVO_API_KEY or MAIL_FROM is not set");
         }
         Map<String, Object> body = Map.of(
                 "sender", Map.of("name", properties.fromNameOrDefault(), "email", properties.from()),
                 "to", List.of(Map.of("email", to.value())),
-                "subject", RecoveryMailText.SUBJECT,
-                "htmlContent", RecoveryMailText.html(code),
-                "textContent", RecoveryMailText.plain(code));
+                "subject", RecoveryMailText.subject(purpose),
+                "htmlContent", RecoveryMailText.html(code, purpose),
+                "textContent", RecoveryMailText.plain(code, purpose));
         var response = client.post()
                 .uri(properties.urlOrDefault())
                 .header("api-key", properties.brevoApiKey())

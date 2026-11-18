@@ -75,6 +75,12 @@ public class AccountController {
         return AccountDto.of(service.changeEmail(id, request.email(), request.reason()));
     }
 
+    @Operation(summary = "Gửi lại mã kích hoạt cho tài khoản chờ kích hoạt")
+    @PostMapping("/{id}/activation-code")
+    public AccountDto resendActivationCode(@PathVariable Long id) {
+        return AccountDto.of(service.resendActivationCode(id));
+    }
+
     @Operation(summary = "Vô hiệu hóa tài khoản")
     @PostMapping("/{id}/deactivate")
     public AccountDto deactivate(@PathVariable Long id) {

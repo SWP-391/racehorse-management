@@ -32,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class TrainerScopeTest extends TrainingTestBase {
 
     /** Head Trainer permissions that only read: every trainer holds them for every horse (BR-153). */
-    private static final Set<Permission> READ_ONLY = EnumSet.of(Permission.VIEW_HORSES, Permission.VIEW_HORSE_OPTIONS,
+    private static final Set<Permission> READ_ONLY = EnumSet.of(Permission.MESSAGING, Permission.VIEW_HORSES, Permission.VIEW_HORSE_OPTIONS,
             Permission.VIEW_LIVE, Permission.RECEIVE_ALERTS, Permission.VIEW_PROGRESS_BOARD, Permission.VIEW_PLANS,
             Permission.VIEW_EXAMINATIONS, Permission.VIEW_HEALTH, Permission.VIEW_READINESS,
             Permission.VIEW_INJURY_MARKS, Permission.WATCH_TRIAL_VIDEOS, Permission.VIEW_CHORES, Permission.VIEW_BARN,

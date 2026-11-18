@@ -172,6 +172,41 @@ public class AccountService {
         return account;
     }
 
+    /** The longest display name, the width of the column (BR-239). */
+    static final int MAX_NAME = 200;
+
+    /**
+     * Changes the display name of any account, whatever its state or role and including the caller's own: a name grants
+     * nothing, so the own-account rules of role, email and deactivation do not apply (BR-239, DEC-077). The same name
+     * is not a change: no audit entry, no error. Earlier audit entries keep the name they were written with.
+     */
+    @Transactional
+    public UserAccount rename(Long id, String nameText) {
+        AccountPrincipal actor = access.require(Permission.MANAGE_ACCOUNTS);
+        String name = tidyName(nameText);
+        if (name.isEmpty()) {
+            throw ApiException.invalid("REQUIRED", "displayName", "Bắt buộc nhập.");
+        }
+        if (name.length() > MAX_NAME) {
+            throw ApiException.invalid("NAME_TOO_LONG", "displayName", "Tên tối đa " + MAX_NAME + " ký tự.");
+        }
+        UserAccount account = accounts.findByIdForUpdate(id).orElseThrow(() -> ApiException.notFound("tài khoản"));
+        String old = account.getDisplayName();
+        if (old.equals(name)) {
+            return account;
+        }
+        account.rename(name);
+        accounts.save(account);
+        audit.record(actor, "ACCOUNT_NAME_CHANGED", "ACCOUNT", account.getId(),
+                Map.of("email", account.emailForAudit(), "oldName", old, "newName", name));
+        return account;
+    }
+
+    /** Trims the name and turns every run of spaces inside it into one (BR-239). */
+    public static String tidyName(String text) {
+        return text == null ? "" : text.strip().replaceAll("\\s+", " ");
+    }
+
     @Transactional
     public UserAccount changeRole(Long id, List<Role> roles) {
         AccountPrincipal actor = access.require(Permission.MANAGE_ACCOUNTS);

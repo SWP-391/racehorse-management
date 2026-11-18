@@ -18,7 +18,7 @@ import java.util.Optional;
 
 /**
  * Re-checks the signed-in account on every request. A deactivated account loses its open sessions at once
- * (BR-090, TECH-006); a role change takes effect on the next request.
+ * (BR-090, TECH-006); a role change or a rename takes effect on the next request (BR-239).
  */
 public class ActiveAccountFilter extends OncePerRequestFilter {
 
@@ -61,7 +61,7 @@ public class ActiveAccountFilter extends OncePerRequestFilter {
                 response.getWriter().write("{\"code\":\"UNAUTHENTICATED\",\"message\":\"Vui lòng đăng nhập.\",\"fields\":{}}");
                 return;
             }
-            if (current.getRole() != principal.role()) {
+            if (current.getRole() != principal.role() || !current.getDisplayName().equals(principal.displayName())) {
                 AccountPrincipal refreshed = AccountPrincipal.of(current);
                 var updated = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
                         refreshed, null, refreshed.getAuthorities());

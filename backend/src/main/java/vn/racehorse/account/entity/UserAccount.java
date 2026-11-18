@@ -112,6 +112,10 @@ public class UserAccount {
         this.role = role;
     }
 
+    public void rename(String displayName) {
+        this.displayName = displayName;
+    }
+
     public void changeEmail(String email) {
         this.email = email;
     }

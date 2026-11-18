@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import vn.racehorse.account.dto.AccountDto;
 import vn.racehorse.account.dto.CreateAccountRequest;
 import vn.racehorse.account.dto.EmailRequest;
+import vn.racehorse.account.dto.RenameRequest;
 import vn.racehorse.account.dto.RolesRequest;
 import vn.racehorse.account.entity.Role;
 import vn.racehorse.account.service.AccountService;
@@ -67,6 +68,12 @@ public class AccountController {
     @PutMapping("/{id}/roles")
     public AccountDto changeRole(@PathVariable Long id, @Valid @RequestBody RolesRequest request) {
         return AccountDto.of(service.changeRole(id, request.roles()));
+    }
+
+    @Operation(summary = "Đổi tên hiển thị của tài khoản")
+    @PutMapping("/{id}/name")
+    public AccountDto rename(@PathVariable Long id, @Valid @RequestBody RenameRequest request) {
+        return AccountDto.of(service.rename(id, request.displayName()));
     }
 
     @Operation(summary = "Nhập hoặc sửa email của tài khoản (sửa cần lý do)")

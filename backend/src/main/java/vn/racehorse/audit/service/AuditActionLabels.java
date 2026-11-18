@@ -17,6 +17,7 @@ public final class AuditActionLabels {
         Map.entry("ACCOUNT_DEACTIVATED", "Vô hiệu hóa tài khoản"),
         Map.entry("SESSION_AUTO_CLOSED", "Tự động đóng buổi tập"),
         Map.entry("ROLE_CHANGED", "Đổi vai trò"),
+        Map.entry("ACCOUNT_NAME_CHANGED", "Đổi tên tài khoản"),
         Map.entry("ACCOUNT_EMAIL_SET", "Đặt email"),
         Map.entry("ACCOUNT_EMAIL_CORRECTED", "Sửa email"),
         Map.entry("ACCOUNT_ACTIVATED", "Kích hoạt tài khoản"),

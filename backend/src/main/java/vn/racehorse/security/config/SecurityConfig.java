@@ -41,6 +41,7 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain filterChain(HttpSecurity http, UserAccountRepository accounts,
+                                    vn.racehorse.security.LoginSessionService loginSessions,
                                     ObjectProvider<FrontendConfig> frontend) throws Exception {
         boolean clientBundled = frontend.getIfAvailable() != null;
         CsrfTokenRequestAttributeHandler csrfHandler = new CsrfTokenRequestAttributeHandler();
@@ -59,7 +60,7 @@ public class SecurityConfig {
                         .accessDeniedHandler(SecurityConfig::refuseForbidden))
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers("/actuator/health", "/api/auth/login", "/api/auth/csrf", "/api/auth/recovery/request",
-                                    "/api/auth/recovery/confirm", "/api/payments/sepay", "/api/openapi/**",
+                                    "/api/auth/recovery/confirm", "/api/auth/code/verify", "/api/auth/code/complete", "/api/payments/sepay", "/api/openapi/**",
                                     "/api/swagger-ui", "/api/swagger-ui/**")
                             .permitAll();
                     if (clientBundled) {
@@ -68,7 +69,7 @@ public class SecurityConfig {
                     }
                     auth.anyRequest().authenticated();
                 })
-                .addFilterAfter(new ActiveAccountFilter(accounts), SecurityContextHolderFilter.class)
+                .addFilterAfter(new ActiveAccountFilter(accounts, loginSessions), SecurityContextHolderFilter.class)
                 .addFilterAfter(new CsrfCookieFilter(), SecurityContextHolderFilter.class);
         return http.build();
     }

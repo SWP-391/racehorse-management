@@ -1,5 +1,6 @@
 package vn.racehorse.inbox.service;
 
+import vn.racehorse.security.HorseVisibility;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,6 +56,7 @@ public class InboxService {
     private static final String CLUB_MANAGERS = "Quản lý CLB";
     private static final int PREVIEW = 100;
 
+    private final HorseVisibility visibility;
     private final ConversationRepository conversations;
     private final MessageRepository messages;
     private final UserAccountRepository accounts;
@@ -67,7 +69,8 @@ public class InboxService {
 
     public InboxService(ConversationRepository conversations, MessageRepository messages, UserAccountRepository accounts,
                         HorseRepository horses, MessagingPolicy policy, NotificationService notifications,
-                        NotificationRepository notices, AccessGuard access, ClubClock clock) {
+                        NotificationRepository notices, AccessGuard access, ClubClock clock, HorseVisibility visibility) {
+        this.visibility = visibility;
         this.conversations = conversations;
         this.messages = messages;
         this.accounts = accounts;
@@ -96,7 +99,7 @@ public class InboxService {
     @Transactional(readOnly = true)
     public RecipientOptions options(Long horseId) {
         UserAccount sender = me(user());
-        Horse horse = horseId == null ? null : horses.findById(horseId).orElseThrow(() -> ApiException.notFound("ngựa"));
+        Horse horse = horseId == null ? null : visibility.require(horseId);
         if (horse != null && sender.getRole() != Role.CLUB_MANAGER) {
             policy.check(sender, null, horse);
         }
@@ -125,7 +128,7 @@ public class InboxService {
         UserAccount recipient = toRole ? null : accounts.findById(request.recipientId())
                 .orElseThrow(() -> ApiException.notFound("người nhận"));
         Horse horse = request.horseId() == null ? null
-                : horses.findById(request.horseId()).orElseThrow(() -> ApiException.notFound("ngựa"));
+                : visibility.require(request.horseId());
         policy.check(sender, recipient, horse);
 
         Instant now = clock.now();
@@ -140,6 +143,46 @@ public class InboxService {
         conversations.markRead(c.getId(), sender.getId(), first.getId());
         notifyOthers(c, sender.getId());
         return c.getId();
+    }
+
+    /**
+     * An automatic notice in the inbox, next to the bell one (BR-253, DEC-085): one conversation per recipient, or one
+     * for the Club Managers when {@code recipientIds} is empty, written under the author's name and starting with
+     * "Tự động: ". It skips the messaging policy (the system speaks, not the person) and sends no second bell. A
+     * failure is logged and never undoes the action that caused the notice.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void startAutomatic(Long authorId, java.util.Collection<Long> recipientIds, Long horseId, String subject, String text) {
+        try {
+            Instant now = clock.now();
+            String cleanSubject = limit(subject, SUBJECT_MAX);
+            String body = limit("Tự động: " + text, TEXT_MAX);
+            if (recipientIds.isEmpty()) {
+                create(authorId, null, horseId, cleanSubject, body, now);
+            }
+            for (Long recipient : recipientIds) {
+                if (!java.util.Objects.equals(recipient, authorId)) {
+                    create(authorId, recipient, horseId, cleanSubject, body, now);
+                }
+            }
+        } catch (RuntimeException e) {
+            org.slf4j.LoggerFactory.getLogger(InboxService.class).warn("Automatic inbox notice failed: {}", e.toString());
+        }
+    }
+
+    private void create(Long authorId, Long recipientId, Long horseId, String subject, String body, Instant now) {
+        Conversation c = conversations.save(new Conversation(subject, horseId,
+                recipientId == null ? Conversation.CLUB_MANAGER : null, authorId, now, Conversation.MESSAGE));
+        conversations.addParticipant(c.getId(), authorId);
+        if (recipientId != null) {
+            conversations.addParticipant(c.getId(), recipientId);
+        }
+        Message first = messages.save(new Message(c.getId(), authorId, body, now));
+        conversations.markRead(c.getId(), authorId, first.getId());
+    }
+
+    private static String limit(String value, int max) {
+        return value.length() <= max ? value : value.substring(0, max - 1) + "…";
     }
 
     @Transactional

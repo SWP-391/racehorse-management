@@ -1,5 +1,6 @@
 package vn.racehorse.billing.service;
 
+import vn.racehorse.security.HorseVisibility;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.racehorse.account.entity.Role;
@@ -44,6 +45,7 @@ import java.util.Objects;
 @Service
 public class StatementService {
 
+    private final HorseVisibility visibility;
     private final ChargeRepository charges;
     private final InvoiceRepository invoices;
     private final InvoiceLineRepository invoiceLines;
@@ -55,7 +57,8 @@ public class StatementService {
 
     public StatementService(ChargeRepository charges, InvoiceRepository invoices, InvoiceLineRepository invoiceLines,
                             BillingMonthRepository months, HorseRepository horses, UserAccountRepository accounts,
-                            AccessGuard access, ClubClock clock) {
+                            AccessGuard access, ClubClock clock, HorseVisibility visibility) {
+        this.visibility = visibility;
         this.charges = charges;
         this.invoices = invoices;
         this.invoiceLines = invoiceLines;
@@ -110,7 +113,8 @@ public class StatementService {
     @Transactional(readOnly = true)
     public Statement ofHorse(Long horseId, String month) {
         AccountPrincipal user = access.require(Permission.VIEW_BILLING);
-        Horse horse = horses.findById(horseId).orElseThrow(() -> ApiException.notFound("ngựa"));
+        // The Club Manager and the owner of the day (a former owner for their own period, BR-181): not the care team rule.
+        Horse horse = horses.findById(horseId).orElseThrow(HorseVisibility::notFound);
         YearMonth ym = parse(month);
         List<Charge> list;
         Long ownerId = null;
@@ -119,7 +123,7 @@ public class StatementService {
             boolean related = Objects.equals(horse.getOwner().getId(), user.id())
                     || charges.existsByHorseIdAndOwnerId(horseId, user.id());
             if (!related) {
-                throw ApiException.forbidden();
+                throw HorseVisibility.notFound();
             }
             list = charges.forHorseAndOwnerInMonth(horseId, user.id(), ym.atDay(1), ym.atEndOfMonth());
             ownerId = user.id();

@@ -1,5 +1,6 @@
 package vn.racehorse.stable.service;
 
+import vn.racehorse.security.HorseVisibility;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -36,6 +37,7 @@ import java.util.Objects;
 @Service
 public class StallService {
 
+    private final HorseVisibility visibility;
     private final HorseRepository horses;
     private final AreaRepository areas;
     private final ChoreService chores;
@@ -44,7 +46,8 @@ public class StallService {
     private final ClubClock clock;
 
     public StallService(HorseRepository horses, AreaRepository areas, ChoreService chores, AccessGuard access,
-                        AuditService audit, ClubClock clock) {
+                        AuditService audit, ClubClock clock, HorseVisibility visibility) {
+        this.visibility = visibility;
         this.horses = horses;
         this.areas = areas;
         this.chores = chores;
@@ -62,6 +65,7 @@ public class StallService {
         AccountPrincipal actor = access.require(Permission.MANAGE_STALLS);
         Horse horse = find(horseId);
         requireActive(horse);
+        vn.racehorse.horse.service.HorseService.requireTakenIn(horse);
         Map<String, String> errors = new LinkedHashMap<>();
         if (areaId == null) {
             errors.put("area", "Bắt buộc chọn khu.");
@@ -153,7 +157,7 @@ public class StallService {
     }
 
     private Horse find(Long id) {
-        return horses.findById(id).orElseThrow(() -> ApiException.notFound("ngựa"));
+        return visibility.require(id);
     }
 
     private static void requireActive(Horse horse) {

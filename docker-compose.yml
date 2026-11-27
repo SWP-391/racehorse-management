@@ -70,7 +70,7 @@ services:
     environment:
       API_TARGET: http://backend:8080
     ports:
-      - "5173:5173"
+      - "5180:5173"
     depends_on:
       - backend
 

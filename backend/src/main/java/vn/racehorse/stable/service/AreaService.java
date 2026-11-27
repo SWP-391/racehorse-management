@@ -1,5 +1,6 @@
 package vn.racehorse.stable.service;
 
+import vn.racehorse.security.HorseVisibility;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,7 @@ public class AreaService {
     static final int MAX_NAME = 100;
     static final int MAX_CAPACITY = 200;
 
+    private final HorseVisibility visibility;
     private final AreaRepository areas;
     private final HorseRepository horses;
     private final AccessGuard access;
@@ -38,7 +40,8 @@ public class AreaService {
     private final ClubClock clock;
 
     public AreaService(AreaRepository areas, HorseRepository horses, AccessGuard access, AuditService audit,
-                       ClubClock clock) {
+                       ClubClock clock, HorseVisibility visibility) {
+        this.visibility = visibility;
         this.areas = areas;
         this.horses = horses;
         this.access = access;
@@ -49,13 +52,15 @@ public class AreaService {
     @Transactional(readOnly = true)
     public List<AreaRow> list() {
         AccountPrincipal user = access.require(Permission.VIEW_BARN);
-        if (user.role() == vn.racehorse.account.entity.Role.HORSE_OWNER) {
-            // A Horse Owner is offered only the areas that hold a horse of theirs, with the count of their own (BR-006, BR-209).
-            Map<Long, Long> mine = horses.findByOwnerIdOrderByNameAsc(user.id()).stream()
+        if (user.role() != vn.racehorse.account.entity.Role.CLUB_MANAGER) {
+            // Counts only horses the person may see (BR-261): an owner is offered only the areas that hold a horse of
+            // theirs (BR-006, BR-209); the other roles see every area with the count of their own horses.
+            Map<Long, Long> mine = visibility.managed().stream()
                     .filter(h -> h.getArea() != null)
                     .collect(java.util.stream.Collectors.groupingBy(h -> h.getArea().getId(), java.util.stream.Collectors.counting()));
-            return areas.findAllByOrderByNameAsc().stream().filter(a -> mine.containsKey(a.getId()))
-                    .map(a -> new AreaRow(a, mine.get(a.getId()))).toList();
+            boolean owner = user.role() == vn.racehorse.account.entity.Role.HORSE_OWNER;
+            return areas.findAllByOrderByNameAsc().stream().filter(a -> !owner || mine.containsKey(a.getId()))
+                    .map(a -> new AreaRow(a, mine.getOrDefault(a.getId(), 0L))).toList();
         }
         return areas.findAllByOrderByNameAsc().stream()
                 .map(a -> new AreaRow(a, horses.countByAreaId(a.getId()))).toList();

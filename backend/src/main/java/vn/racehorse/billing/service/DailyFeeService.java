@@ -69,7 +69,7 @@ public class DailyFeeService {
         int charged = 0;
         BigDecimal price = prices.dailyOn(day).map(ServicePrice::getAmount).orElse(null);
         if (price != null) {
-            for (Horse horse : horses.findAll()) {
+            for (Horse horse : horses.findAllManaged()) {
                 if (managedOn(horse, day) && charges.record(new ChargeSpec(horse.getId(), null,
                         Charge.Category.DAILY_FEE, day, "Phí chuồng và công chăm sóc", BigDecimal.ONE, price, null,
                         "FEE_DAY:" + horse.getId() + ":" + day, "FEE_DAY:" + day, null, null))) {
@@ -81,9 +81,12 @@ public class DailyFeeService {
         return 1;
     }
 
-    /** Registered on or before the day and not archived at its end (BR-178). */
+    /** Taken in on or before the day (the take-in day is the first charged day) and not archived at its end (BR-178, BR-179, BR-245). */
     private boolean managedOn(Horse horse, LocalDate day) {
-        LocalDate registered = clock.toClubTime(horse.getCreatedAt()).toLocalDate();
+        if (!horse.isTakenIn()) {
+            return false;
+        }
+        LocalDate registered = clock.toClubTime(horse.getAcceptedAt()).toLocalDate();
         if (registered.isAfter(day)) {
             return false;
         }

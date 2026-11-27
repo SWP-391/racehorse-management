@@ -33,6 +33,10 @@ public class UserAccount {
     @Column(name = "password_version", nullable = false)
     private long passwordVersion;
 
+    /** Optional contact number the person keeps on their own profile (BR-254). */
+    @Column(length = 20)
+    private String phone;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role;
@@ -92,6 +96,10 @@ public class UserAccount {
         return passwordVersion;
     }
 
+    public String getPhone() {
+        return phone;
+    }
+
     public Role getRole() {
         return role;
     }
@@ -114,6 +122,10 @@ public class UserAccount {
 
     public void rename(String displayName) {
         this.displayName = displayName;
+    }
+
+    public void changePhone(String phone) {
+        this.phone = phone;
     }
 
     public void changeEmail(String email) {

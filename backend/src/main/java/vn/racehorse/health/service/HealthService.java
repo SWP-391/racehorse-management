@@ -1,5 +1,6 @@
 package vn.racehorse.health.service;
 
+import vn.racehorse.security.HorseVisibility;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
@@ -59,6 +60,7 @@ public class HealthService {
 
     static final String INTAKE_REASON = "Chờ khám nhập đàn";
 
+    private final HorseVisibility visibility;
     private final HorseHealthRepository health;
     private final HealthStatusChangeRepository history;
     private final TrainingLockRepository locks;
@@ -79,7 +81,8 @@ public class HealthService {
                          PendingLockRequestRepository pending, HorseRepository horses,
                          UserAccountRepository accounts, ActivityStatusProvider activity, AccessGuard access,
                          AuditService audit, NotificationService notifications, ClubClock clock,
-                         ApplicationEventPublisher events, HorseTrainerService trainers) {
+                         ApplicationEventPublisher events, HorseTrainerService trainers, HorseVisibility visibility) {
+        this.visibility = visibility;
         this.health = health;
         this.history = history;
         this.locks = locks;
@@ -120,7 +123,7 @@ public class HealthService {
     public HealthEligibility eligibility(Long horseId) {
         HorseHealth h = healthOf(horseId);
         TrainingLock lock = locks.findByHorseIdAndLiftedAtIsNull(horseId).orElse(null);
-        return new HealthEligibility(horseId, h.getStatus(), lock, Readiness.of(h.getStatus(), lock != null),
+        return new HealthEligibility(horseId, h.getStatus(), lock, Readiness.of(h.getStatus(), lock != null, h.isUnexamined()),
                 h.isUnexamined());
     }
 
@@ -144,7 +147,7 @@ public class HealthService {
     @Transactional(readOnly = true)
     public List<HorseHealthView> herd() {
         access.require(Permission.VIEW_HEALTH);
-        List<Horse> managed = horses.findAllByOrderByNameAsc().stream().filter(h -> !h.isArchived()).toList();
+        List<Horse> managed = visibility.managed().stream().filter(h -> !h.isArchived()).toList();
         List<Long> ids = managed.stream().map(Horse::getId).toList();
         Map<Long, HorseHealth> byHorse = health.findAllById(ids).stream()
                 .collect(Collectors.toMap(HorseHealth::getHorseId, Function.identity()));
@@ -154,7 +157,7 @@ public class HealthService {
             HorseHealth hh = byHorse.get(h.getId());
             TrainingLock lock = lockByHorse.get(h.getId());
             return new HorseHealthView(h, hh, lock, activity.activityOf(h.getId()),
-                    Readiness.of(hh.getStatus(), lock != null), List.of(), List.of(),
+                    Readiness.of(hh.getStatus(), lock != null, hh.isUnexamined()), List.of(), List.of(),
                     openRequest(h.getId()));
         }).toList();
     }
@@ -167,17 +170,15 @@ public class HealthService {
 
     @Transactional(readOnly = true)
     public Readiness readiness(Long horseId) {
-        AccountPrincipal user = access.require(Permission.VIEW_READINESS);
-        requireVisible(user, horse(horseId));
+        access.require(Permission.VIEW_READINESS);
+        horse(horseId);
         return eligibility(horseId).readiness();
     }
 
     @Transactional(readOnly = true)
     public Map<Long, Readiness> readinessOfVisibleHorses() {
-        AccountPrincipal user = access.require(Permission.VIEW_READINESS);
-        List<Horse> visible = user.role() == Role.HORSE_OWNER
-                ? horses.findByOwnerIdOrderByNameAsc(user.id())
-                : horses.findAllByOrderByNameAsc();
+        access.require(Permission.VIEW_READINESS);
+        List<Horse> visible = visibility.managed();
         Map<Long, Readiness> result = new LinkedHashMap<>();
         for (Horse h : visible) {
             if (health.existsById(h.getId())) {
@@ -198,6 +199,9 @@ public class HealthService {
         String why = requireText(reason, "reason", "REASON_REQUIRED", "Bắt buộc nhập lý do.");
         if (to == null) {
             throw ApiException.invalid("STATUS_REQUIRED", "status", "Bắt buộc chọn trạng thái.");
+        }
+        if (to == HealthStatus.ELIGIBLE) {
+            requireExamined(horseId);
         }
         applyStatus(actor, horse, to, why);
         return view(horseId, true);
@@ -234,6 +238,7 @@ public class HealthService {
             throw new ApiException(HttpStatus.CONFLICT, "LIFT_NOT_ALLOWED",
                     "Không thể gỡ khóa khi ngựa đang " + status.label() + ". Hãy đổi trạng thái trước.");
         }
+        requireExamined(horseId);
         if (returnLevel == null) {
             throw ApiException.invalid("RETURN_LEVEL_REQUIRED", "returnLevel", "Bắt buộc chọn mức độ quay lại.");
         }
@@ -257,7 +262,7 @@ public class HealthService {
                 .orElseThrow(() -> new ApiException(HttpStatus.CONFLICT, "NOT_LOCKED", "Ngựa không bị khóa."));
         notes.save(new LockReviewNote(lock.getId(), account(actor), text, clock.now()));
         audit.record(actor, "LOCK_REVIEW_REQUESTED", "HORSE", horseId, Map.of("lockId", lock.getId(), "note", text));
-        notifications.notifyRole(Role.VETERINARIAN,
+        notifications.notifyVeterinarianOf(horse,
                 "HLV đề nghị xem xét khóa huấn luyện của ngựa \"" + horse.getName() + "\": " + text,
                 "/horses/" + horseId);
         return view(horseId, false);
@@ -321,7 +326,7 @@ public class HealthService {
         TrainingLock lock = locks.findByHorseIdAndLiftedAtIsNull(horse.getId())
                 .orElseGet(() -> placeLock(requester, horse, LockKind.MANUAL, request.getReason(), null));
         request.applied(lock.getId(), clock.now());
-        notifications.notifyRole(Role.VETERINARIAN,
+        notifications.notifyVeterinarianOf(horse,
                 "Yêu cầu khóa chờ cho ngựa \"" + horse.getName() + "\" đã có hiệu lực.", "/horses/" + horse.getId());
     }
 
@@ -341,6 +346,7 @@ public class HealthService {
         }
         hh.changeStatus(to, clock.now());
         history.save(new HealthStatusChange(horse.getId(), from, to, why, account(actor), clock.now()));
+        events.publishEvent(new vn.racehorse.events.DomainEvents.HealthStatusChanged(horse.getId(), to.name()));
         audit.record(actor, "HEALTH_STATUS_CHANGED", "HORSE", horse.getId(),
                 Map.of("from", from.name(), "to", to.name(), "reason", why));
         if (to.forbidsTraining() && locks.findByHorseIdAndLiftedAtIsNull(horse.getId()).isEmpty()) {
@@ -372,13 +378,21 @@ public class HealthService {
         TrainingLock lock = locks.findByHorseIdAndLiftedAtIsNull(horseId).orElse(null);
         List<LockReviewNote> lockNotes = lock == null ? List.of() : notes.findByLockIdOrderByCreatedAtAsc(lock.getId());
         return new HorseHealthView(horse, hh, lock, activity.activityOf(horseId),
-                Readiness.of(hh.getStatus(), lock != null), lockNotes,
+                Readiness.of(hh.getStatus(), lock != null, hh.isUnexamined()), lockNotes,
                 withHistory ? history.findByHorseIdOrderByChangedAtDescIdDesc(horseId) : List.of(),
                 openRequest(horseId));
     }
 
     private PendingLockRequest openRequest(Long horseId) {
         return pending.findByHorseIdAndWithdrawnAtIsNullAndAppliedAtIsNull(horseId).orElse(null);
+    }
+
+    /** BR-247: no lift and no Đủ điều kiện while the horse has no examination. */
+    private void requireExamined(Long horseId) {
+        if (healthOf(horseId).isUnexamined()) {
+            throw ApiException.invalid("EXAMINATION_REQUIRED", "examination",
+                    "Ngựa chưa có lần khám nào: hãy ghi nhận một lần khám trước.");
+        }
     }
 
     private void requireIdle(Long horseId) {
@@ -388,14 +402,8 @@ public class HealthService {
         }
     }
 
-    private static void requireVisible(AccountPrincipal user, Horse horse) {
-        if (user.role() == Role.HORSE_OWNER && !Objects.equals(horse.getOwner().getId(), user.id())) {
-            throw ApiException.forbidden();
-        }
-    }
-
     private Horse horse(Long horseId) {
-        return horses.findById(horseId).orElseThrow(() -> ApiException.notFound("ngựa"));
+        return visibility.require(horseId);
     }
 
     private Horse managedHorse(Long horseId) {

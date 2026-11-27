@@ -32,4 +32,22 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, Long> 
     List<UserAccount> findAllByOrderByDisplayNameAsc();
 
     List<UserAccount> findByRoleOrderByDisplayNameAsc(Role role);
+
+    /** Names of the horses (not archived) a person holds as main or temporary trainer (BR-252). */
+    @org.springframework.data.jpa.repository.Query(value =
+            "select name from horse where archived_at is null and intake_state = 'ACCEPTED' and (main_trainer_id = :id or temp_trainer_id = :id) order by name",
+            nativeQuery = true)
+    List<String> horseNamesHeldAsTrainer(@org.springframework.data.repository.query.Param("id") Long id);
+
+    /** Names of the horses (not archived, taken in) a Veterinarian holds as main or substitute (BR-259). */
+    @org.springframework.data.jpa.repository.Query(value =
+            "select name from horse where archived_at is null and intake_state = 'ACCEPTED' and (vet_id = :id or temp_vet_id = :id) order by name",
+            nativeQuery = true)
+    List<String> horseNamesHeldAsVet(@org.springframework.data.repository.query.Param("id") Long id);
+
+    /** Names of the horses (not archived, taken in) a Groom holds as main or substitute (BR-259). */
+    @org.springframework.data.jpa.repository.Query(value =
+            "select name from horse where archived_at is null and intake_state = 'ACCEPTED' and (groom_id = :id or temp_groom_id = :id) order by name",
+            nativeQuery = true)
+    List<String> horseNamesHeldAsGroom(@org.springframework.data.repository.query.Param("id") Long id);
 }

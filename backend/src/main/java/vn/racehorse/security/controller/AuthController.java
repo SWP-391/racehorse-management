@@ -40,9 +40,11 @@ public class AuthController {
     private final AuthenticationManager authenticationManager;
     private final SecurityContextRepository contextRepository;
     private final AccessGuard access;
+    private final vn.racehorse.security.LoginSessionService loginSessions;
 
     public AuthController(AuthenticationManager authenticationManager, SecurityContextRepository contextRepository,
-                          AccessGuard access) {
+                          AccessGuard access, vn.racehorse.security.LoginSessionService loginSessions) {
+        this.loginSessions = loginSessions;
         this.authenticationManager = authenticationManager;
         this.contextRepository = contextRepository;
         this.access = access;
@@ -71,12 +73,14 @@ public class AuthController {
         }
         HttpSession existing = request.getSession(false);
         if (existing != null) {
+            loginSessions.close(existing);
             request.changeSessionId();
         }
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(auth);
         SecurityContextHolder.setContext(context);
         contextRepository.saveContext(context, request, response);
+        loginSessions.open(((AccountPrincipal) auth.getPrincipal()).id(), request);
         return me();
     }
 
@@ -87,6 +91,7 @@ public class AuthController {
         SecurityContextHolder.clearContext();
         HttpSession session = request.getSession(false);
         if (session != null) {
+            loginSessions.close(session);
             session.invalidate();
         }
     }

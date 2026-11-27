@@ -1,5 +1,6 @@
 package vn.racehorse.inbox.service;
 
+import vn.racehorse.security.HorseVisibility;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import vn.racehorse.account.entity.Role;
@@ -36,13 +37,15 @@ public class MessagingPolicy {
 
     static final String NOT_ALLOWED = "Bạn không thể nhắn tin cho người này.";
 
+    private final HorseVisibility visibility;
     private final HorseRepository horses;
     private final HorseTrainerService trainers;
     private final ExaminationRepository examinations;
     private final UserAccountRepository accounts;
 
     public MessagingPolicy(HorseRepository horses, HorseTrainerService trainers, ExaminationRepository examinations,
-                           UserAccountRepository accounts) {
+                           UserAccountRepository accounts, HorseVisibility visibility) {
+        this.visibility = visibility;
         this.horses = horses;
         this.trainers = trainers;
         this.examinations = examinations;
@@ -133,9 +136,8 @@ public class MessagingPolicy {
     public List<HorseOption> horseOptions(UserAccount sender) {
         List<Horse> all = switch (sender.getRole()) {
             case HORSE_OWNER -> horses.findByOwnerIdOrderByNameAsc(sender.getId());
-            case HEAD_TRAINER -> horses.findAllByOrderByNameAsc().stream()
-                    .filter(h -> isTrainerOf(h, sender)).toList();
-            case VETERINARIAN, CLUB_MANAGER -> horses.findAllByOrderByNameAsc();
+            case HEAD_TRAINER -> visibility.managed().stream().filter(h -> isTrainerOf(h, sender)).toList();
+            case VETERINARIAN, CLUB_MANAGER -> visibility.managed();
             case GROOM -> List.<Horse>of();
         };
         return all.stream().filter(h -> !h.isArchived()).map(h -> new HorseOption(h.getId(), h.getName())).toList();

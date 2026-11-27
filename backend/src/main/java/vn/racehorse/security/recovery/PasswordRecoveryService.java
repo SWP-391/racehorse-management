@@ -31,6 +31,7 @@ public class PasswordRecoveryService {
 
     public static final String SENT_MESSAGE = "Nếu email thuộc một tài khoản đang hoạt động, mã xác nhận đã được gửi.";
     public static final String CODE_REFUSED = "Mã xác nhận không đúng hoặc đã hết hạn.";
+    public static final Duration TOKEN_TTL = Duration.ofMinutes(10);
     public static final Duration CODE_TTL = Duration.ofMinutes(5);
     public static final Duration MIN_GAP = Duration.ofSeconds(60);
     public static final Duration WINDOW = Duration.ofHours(1);
@@ -41,6 +42,7 @@ public class PasswordRecoveryService {
     private final UserAccountRepository accounts;
     private final PasswordRecoveryRepository recoveries;
     private final PasswordRecoveryRequestRepository requests;
+    private final CodeTokenRepository tokens;
     private final PasswordEncoder encoder;
     private final AuditService audit;
     private final ClubClock clock;
@@ -49,11 +51,12 @@ public class PasswordRecoveryService {
     private volatile String dummyHash;
 
     public PasswordRecoveryService(UserAccountRepository accounts, PasswordRecoveryRepository recoveries,
-                                   PasswordRecoveryRequestRepository requests, PasswordEncoder encoder,
+                                   PasswordRecoveryRequestRepository requests, CodeTokenRepository tokens, PasswordEncoder encoder,
                                    AuditService audit, ClubClock clock, RecoveryMailDispatcher mail) {
         this.accounts = accounts;
         this.recoveries = recoveries;
         this.requests = requests;
+        this.tokens = tokens;
         this.encoder = encoder;
         this.audit = audit;
         this.clock = clock;
@@ -118,10 +121,15 @@ public class PasswordRecoveryService {
         afterCommit(() -> mail.dispatch(email, code, RecoveryPurpose.ACTIVATION));
     }
 
-    /** A refused confirmation still records its wrong try or void, so the exception does not roll back (BR-215). */
-    @Transactional(noRollbackFor = ApiException.class)
-    public void confirm(String emailText, String code, String newPassword) {
-        Instant now = clock.now();
+    /** The account and live code that a correct email and code point to. */
+    private record Checked(UserAccount account, PasswordRecovery recovery) {
+    }
+
+    /**
+     * Checks an email and code the same way for every use: one message for every cause, the wrong try counted, the
+     * live code voided at the fifth (BR-215). The code is not used up here.
+     */
+    private Checked check(String emailText, String code, Instant now) {
         Optional<UserAccount> found = EmailAddress.tryParse(emailText)
                 .flatMap(e -> accounts.findByEmail(e.value())).filter(PasswordRecoveryService::canReceiveCode);
         if (found.isEmpty()) {
@@ -145,6 +153,15 @@ public class PasswordRecoveryService {
             recoveries.save(recovery);
             throw codeRefused();
         }
+        return new Checked(account, recovery);
+    }
+
+    /** Uses up the code and saves the password; a pending account becomes active (BR-237, BR-240). */
+    private void finish(UserAccount account, PasswordRecovery recovery, String newPassword) {
+        if (account.isPending() && account.getRole() == vn.racehorse.account.entity.Role.CLUB_MANAGER) {
+            // An invitation never makes a second Club Manager (BR-240, DEC-078); the account stays pending.
+            vn.racehorse.account.service.AccountService.requireAssignable(account.getRole());
+        }
         recovery.spend();
         recoveries.save(recovery);
         if (account.isPending()) {
@@ -158,12 +175,66 @@ public class PasswordRecoveryService {
         audit.recordSystem("PASSWORD_RESET", "ACCOUNT", account.getId(), Map.of("email", EmailAddress.mask(account.getEmail())));
     }
 
+    /** A refused confirmation still records its wrong try or void, so the exception does not roll back (BR-215). */
+    @Transactional(noRollbackFor = ApiException.class)
+    public void confirm(String emailText, String code, String newPassword) {
+        Checked checked = check(emailText, code, clock.now());
+        finish(checked.account(), checked.recovery(), newPassword);
+    }
+
+    /**
+     * Step 1 of the two-step flow: a correct email and code give a random token valid for 10 minutes and one use.
+     * The code stays alive until step 2 saves the password; earlier tokens of the person are ended (BR-255, TECH-F7).
+     */
+    @Transactional(noRollbackFor = ApiException.class)
+    public String verify(String emailText, String code) {
+        Instant now = clock.now();
+        Checked checked = check(emailText, code, now);
+        Long id = checked.account().getId();
+        tokens.useUp(id, now);
+        byte[] bytes = new byte[32];
+        RANDOM.nextBytes(bytes);
+        String token = java.util.HexFormat.of().formatHex(bytes);
+        tokens.save(new CodeToken(id, hashToken(token), now.plus(TOKEN_TTL)));
+        return token;
+    }
+
+    /**
+     * Step 2: the token and the new password. The token and the code are used up in this transaction; every failure has
+     * the one message of the code (BR-255, TECH-F7). Returns the account so the caller can start its session.
+     */
+    @Transactional(noRollbackFor = ApiException.class)
+    public UserAccount complete(String token, String newPassword) {
+        Instant now = clock.now();
+        CodeToken stored = tokens.findByTokenHash(hashToken(token == null ? "" : token))
+                .filter(t -> t.isUsable(now)).orElseThrow(PasswordRecoveryService::codeRefused);
+        UserAccount account = accounts.findByIdForUpdate(stored.getUserId()).filter(PasswordRecoveryService::canReceiveCode)
+                .orElseThrow(PasswordRecoveryService::codeRefused);
+        // The token (10 minutes) is the proof of step 1; the code itself must still be live and unspent,
+        // but its own shorter lifetime is not checked again here (AC-576).
+        PasswordRecovery recovery = recoveries.findLiveForUpdate(account.getId())
+                .orElseThrow(PasswordRecoveryService::codeRefused);
+        finish(account, recovery, newPassword);
+        tokens.useUp(account.getId(), now);
+        return accounts.findById(account.getId()).orElseThrow();
+    }
+
+    private static String hashToken(String token) {
+        try {
+            return java.util.HexFormat.of().formatHex(
+                    java.security.MessageDigest.getInstance("SHA-256").digest(token.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     /** Removes the rows that are more than one day old (the pace never looks further back than an hour). */
     @Transactional
     public void cleanup() {
         Instant before = clock.now().minus(Duration.ofDays(1));
         requests.deleteRequestedBefore(before);
         recoveries.deleteCreatedBefore(before);
+        tokens.deleteExpiredBefore(before);
     }
 
     private void enforcePace(EmailAddress email, Instant now) {

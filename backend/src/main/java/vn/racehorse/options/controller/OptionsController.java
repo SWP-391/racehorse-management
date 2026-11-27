@@ -88,7 +88,7 @@ public class OptionsController {
             return incidents.horseOptions().stream()
                     .map(h -> new OptionDto(h.id(), h.name(), h.registrationNumber())).toList();
         }
-        return horses.list().stream().filter(h -> !h.isArchived()).map(OptionsController::horseOption).toList();
+        return horses.list().stream().filter(h -> !h.isArchived() && h.isTakenIn()).map(OptionsController::horseOption).toList();
     }
 
     private static OptionDto horseOption(Horse h) {

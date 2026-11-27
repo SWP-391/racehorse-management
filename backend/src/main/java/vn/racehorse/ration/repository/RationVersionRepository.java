@@ -18,4 +18,10 @@ public interface RationVersionRepository extends JpaRepository<RationVersion, Lo
 
     /** The version in force on a date: the latest whose effective date is not after it (BR-140, BR-173). */
     Optional<RationVersion> findFirstByHorseIdAndEffectiveDateLessThanEqualOrderByVersionNoDesc(Long horseId, LocalDate date);
+
+    /** Horse id and tag of the latest version of each given horse, without loading meals or history. */
+    @org.springframework.data.jpa.repository.Query(value = "select v.horse_id, v.condition_tag from ration_version v "
+            + "where v.horse_id in (:ids) and v.version_no = (select max(x.version_no) from ration_version x "
+            + "where x.horse_id = v.horse_id)", nativeQuery = true)
+    List<Object[]> latestTags(@org.springframework.data.repository.query.Param("ids") Collection<Long> horseIds);
 }

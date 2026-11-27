@@ -1,5 +1,6 @@
 package vn.racehorse.simulation.service;
 
+import vn.racehorse.security.HorseVisibility;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -49,6 +50,7 @@ public class SimulationService {
     public static final String LABEL = "DỮ LIỆU MÔ PHỎNG";
     static final int WINDOW_SECONDS = 60;
 
+    private final HorseVisibility visibility;
     private final TelemetrySource source;
     private final TelemetryThresholdRepository thresholds;
     private final TelemetryAlertRepository alerts;
@@ -66,7 +68,8 @@ public class SimulationService {
                              TelemetryAlertRepository alerts, TrainingSessionRepository sessions,
                              HorseRepository horses, ActivityStatusProvider activity, SessionService sessionService,
                              AccessGuard access, AuditService audit, NotificationService notifications, ClubClock clock,
-                             HorseTrainerService trainers) {
+                             HorseTrainerService trainers, HorseVisibility visibility) {
+        this.visibility = visibility;
         this.source = source;
         this.thresholds = thresholds;
         this.alerts = alerts;
@@ -271,7 +274,7 @@ public class SimulationService {
                 + th.getMeasure().label() + " " + th.getLimit().stripTrailingZeros().toPlainString() + ": "
                 + value.stripTrailingZeros().toPlainString() + ".";
         trainers.notifyTrainer(s.getHorseId(), message, "/sessions/" + s.getId());
-        notifications.notifyRole(Role.VETERINARIAN, message, "/horses/" + s.getHorseId());
+        horses.findById(s.getHorseId()).ifPresent(h -> notifications.notifyVeterinarianOf(h, message, "/horses/" + s.getHorseId()));
     }
 
     // ---- summary at session end (BR-051, TECH-040) ---------------------------------------------------------
@@ -305,7 +308,7 @@ public class SimulationService {
     }
 
     private Horse horse(Long horseId) {
-        return horses.findById(horseId).orElseThrow(() -> ApiException.notFound("ngựa"));
+        return visibility.require(horseId);
     }
 
     private String horseName(Long horseId) {

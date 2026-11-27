@@ -1,5 +1,6 @@
 package vn.racehorse.incident.service;
 
+import vn.racehorse.security.HorseVisibility;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +42,7 @@ public class IncidentService {
     static final int MAX_PHOTOS = 3;
     static final long MAX_PHOTO_BYTES = 10L * 1024 * 1024;
 
+    private final HorseVisibility visibility;
     private final IncidentReportRepository reports;
     private final IncidentPhotoRepository photos;
     private final HorseRepository horses;
@@ -53,7 +55,8 @@ public class IncidentService {
 
     public IncidentService(IncidentReportRepository reports, IncidentPhotoRepository photos, HorseRepository horses,
                            ExaminationRepository exams, UserAccountRepository accounts, AccessGuard access,
-                           AuditService audit, NotificationService notifications, ClubClock clock) {
+                           AuditService audit, NotificationService notifications, ClubClock clock, HorseVisibility visibility) {
+        this.visibility = visibility;
         this.reports = reports;
         this.photos = photos;
         this.horses = horses;
@@ -69,7 +72,7 @@ public class IncidentService {
     @Transactional(readOnly = true)
     public List<IncidentHorseOption> horseOptions() {
         access.require(Permission.VIEW_HORSE_OPTIONS);
-        return horses.findAllByOrderByNameAsc().stream().filter(h -> !h.isArchived())
+        return visibility.managed().stream().filter(h -> !h.isArchived())
                 .map(h -> new IncidentHorseOption(h.getId(), h.getName(), h.getRegistrationNumber())).toList();
     }
 
@@ -77,7 +80,11 @@ public class IncidentService {
     public IncidentDetail send(Long horseId, String description, String bodyRegion, List<MultipartFile> files) {
         AccountPrincipal actor = access.require(Permission.SEND_INCIDENTS);
         Map<String, String> errors = new LinkedHashMap<>();
-        Horse horse = horseId == null ? null : horses.findById(horseId).orElse(null);
+        // A horse the Groom does not look after answers as not found (BR-070, BR-261, AC-600).
+        Horse horse = horseId == null ? null : visibility.require(horseId);
+        if (horse != null) {
+            vn.racehorse.horse.service.HorseService.requireTakenIn(horse);
+        }
         if (horse == null || horse.isArchived()) {
             errors.put("horseId", "Hãy chọn một con ngựa trong danh sách.");
         }
@@ -125,7 +132,7 @@ public class IncidentService {
         }
         audit.record(actor, "INCIDENT_SENT", "INCIDENT", report.getId(),
                 Map.of("horseId", horseId, "photos", accepted.size()));
-        notifications.notifyRole(Role.VETERINARIAN,
+        notifications.notifyVeterinarianOf(horse,
                 "Báo cáo sự cố mới về ngựa \"" + horse.getName() + "\": " + shorten(description.trim()),
                 "/incidents/" + report.getId());
         return new IncidentDetail(report, horse, photos.idsOfReport(report.getId()));
@@ -143,6 +150,10 @@ public class IncidentService {
         } else {
             throw ApiException.forbidden();
         }
+        // A Veterinarian reads the reports about the horses they look after; a Groom their own reports (BR-261).
+        if (Permission.HANDLE_INCIDENTS.allows(user.role())) {
+            rows = visibility.filterByHorseId(rows, IncidentReport::getHorseId);
+        }
         return rows.stream().map(r -> new IncidentDetail(r, horses.findById(r.getHorseId()).orElseThrow(),
                 photos.idsOfReport(r.getId()))).toList();
     }
@@ -153,6 +164,7 @@ public class IncidentService {
         AccountPrincipal user = access.current();
         IncidentReport r = reports.findById(id).orElseThrow(() -> ApiException.notFound("báo cáo sự cố"));
         if (Permission.HANDLE_INCIDENTS.allows(user.role())) {
+            visibility.require(r.getHorseId());
             if (r.getState() == IncidentState.NEW) {
                 r.acknowledge(accounts.findById(user.id()).orElseThrow(), clock.now());
                 audit.record(user, "INCIDENT_ACKNOWLEDGED", "INCIDENT", id, Map.of("horseId", r.getHorseId()));
@@ -167,6 +179,7 @@ public class IncidentService {
     public IncidentDetail close(Long id, String note, Long examinationId) {
         AccountPrincipal actor = access.require(Permission.HANDLE_INCIDENTS);
         IncidentReport r = reports.findById(id).orElseThrow(() -> ApiException.notFound("báo cáo sự cố"));
+        visibility.require(r.getHorseId());
         if (r.getState() == IncidentState.HANDLED) {
             throw new ApiException(HttpStatus.CONFLICT, "INCIDENT_STATE", "Báo cáo đã được xử lý.");
         }
@@ -197,6 +210,9 @@ public class IncidentService {
         boolean own = Permission.SEND_INCIDENTS.allows(user.role()) && Objects.equals(r.getGroom().getId(), user.id());
         if (!own && !Permission.HANDLE_INCIDENTS.allows(user.role())) {
             throw ApiException.forbidden();
+        }
+        if (!own) {
+            visibility.require(r.getHorseId());
         }
         IncidentPhoto p = photos.findById(photoId).orElseThrow(() -> ApiException.notFound("ảnh"));
         if (!Objects.equals(p.getReportId(), reportId)) {

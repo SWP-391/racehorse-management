@@ -12,6 +12,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import vn.racehorse.account.entity.UserAccount;
 import vn.racehorse.account.repository.UserAccountRepository;
 import vn.racehorse.security.AccountPrincipal;
+import vn.racehorse.security.LoginSessionService;
 
 import java.io.IOException;
 import java.util.Optional;
@@ -24,8 +25,11 @@ public class ActiveAccountFilter extends OncePerRequestFilter {
 
     private final UserAccountRepository accounts;
 
-    public ActiveAccountFilter(UserAccountRepository accounts) {
+    private final LoginSessionService loginSessions;
+
+    public ActiveAccountFilter(UserAccountRepository accounts, LoginSessionService loginSessions) {
         this.accounts = accounts;
+        this.loginSessions = loginSessions;
     }
 
     @Override
@@ -55,6 +59,17 @@ public class ActiveAccountFilter extends OncePerRequestFilter {
                 if (session != null) {
                     session.invalidate();
                 }
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                response.setCharacterEncoding("UTF-8");
+                response.getWriter().write("{\"code\":\"UNAUTHENTICATED\",\"message\":\"Vui lòng đăng nhập.\",\"fields\":{}}");
+                return;
+            }
+            HttpSession live = request.getSession(false);
+            if (live != null && !loginSessions.useOrEnd(current.getId(), request, live)) {
+                // This sign-in was ended from another session of the same person (BR-254).
+                SecurityContextHolder.clearContext();
+                live.invalidate();
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                 response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                 response.setCharacterEncoding("UTF-8");

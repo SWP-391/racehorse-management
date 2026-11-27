@@ -38,9 +38,17 @@ import vn.racehorse.horse.dto.OwnerRef;
 import vn.racehorse.horse.dto.PedigreeRequest;
 import vn.racehorse.horse.dto.TrainerRef;
 import vn.racehorse.horse.dto.TrainerRequest;
+import vn.racehorse.horse.dto.RefuseRequest;
+import vn.racehorse.horse.dto.TakeInRequest;
 import vn.racehorse.horse.entity.Horse;
+import vn.racehorse.horse.entity.IntakeState;
 import vn.racehorse.horse.entity.PedigreeAncestor;
 import vn.racehorse.horse.entity.PedigreePosition;
+import vn.racehorse.horse.dto.CareTeam;
+import vn.racehorse.horse.dto.MoveCareRequest;
+import vn.racehorse.horse.dto.SubstituteRequest;
+import vn.racehorse.horse.entity.CareRole;
+import vn.racehorse.horse.service.CareTeamService;
 import vn.racehorse.horse.service.HorsePhotoService;
 import vn.racehorse.horse.service.HorseService;
 import vn.racehorse.horse.service.HorseTrainerService;
@@ -65,9 +73,11 @@ public class HorseController {
     private final HealthService health;
     private final HorseTrainerService trainers;
     private final AccessGuard access;
+    private final CareTeamService careTeam;
 
     public HorseController(HorseService service, HorsePhotoService photos, HealthService health,
-                           HorseTrainerService trainers, AccessGuard access) {
+                           HorseTrainerService trainers, AccessGuard access, CareTeamService careTeam) {
+        this.careTeam = careTeam;
         this.service = service;
         this.photos = photos;
         this.health = health;
@@ -84,13 +94,15 @@ public class HorseController {
         AccountPrincipal user = access.current();
         UserAccount effective = trainers.effectiveTrainer(h);
         return new HorseDto(h.getId(), h.getName(), h.getRegistrationNumber(), h.getSex(), h.getBirthDate(),
-                h.getCoatColour(), h.getBreed(), new OwnerRef(h.getOwner().getId(), h.getOwner().getDisplayName()),
+                h.getCoatColour(), h.getBreed() == null ? null : h.getBreed().getName(),
+                h.getBreed() == null ? null : h.getBreed().getId(), new OwnerRef(h.getOwner().getId(), h.getOwner().getDisplayName()),
                 h.isArchived(), h.getArchiveReason(), h.getArchiveNote(), h.getArchivedAt(),
                 h.getPhotoUpdatedAt() == null ? null : h.getPhotoUpdatedAt().toEpochMilli(),
                 TrainerRef.of(effective), TrainerRef.of(h.getMainTrainer()),
                 h.getTempTrainer() == null ? null
                         : new LoanRef(h.getTempTrainer().getId(), h.getTempTrainer().getDisplayName(), h.getTempUntil()),
-                trainers.canWrite(h, user) && !h.isArchived(), healthStatus);
+                trainers.canWrite(h, user) && !h.isArchived() && h.isTakenIn(), healthStatus,
+                h.getIntakeState(), h.getRefusalReason(), h.getAcceptedAt(), CareTeam.of(h));
     }
 
     /** Paged and searchable by name, registration number and owner; the service already reduces it to what the caller may see. */
@@ -106,7 +118,8 @@ public class HorseController {
                                        @RequestParam(required = false) Long trainerId,
                                        @RequestParam(required = false) Long areaId,
                                        @RequestParam(required = false) Boolean noTrainer,
-                                       @RequestParam(required = false) Readiness readiness) {
+                                       @RequestParam(required = false) Readiness readiness,
+                                       @RequestParam(required = false) IntakeState intakeState) {
         PageParams params = PageParams.of(page, size, q);
         // The health filter needs PERM-020, so an Owner who sends it is refused like on the health page.
         boolean canHealth = access.permissionsOf(access.current()).contains("VIEW_HEALTH");
@@ -124,6 +137,7 @@ public class HorseController {
                 .filter(h -> area == null || area.isBlank()
                         || (h.getArea() != null && area.trim().equalsIgnoreCase(h.getArea().getName())))
                 .filter(h -> areaId == null || (h.getArea() != null && h.getArea().getId().equals(areaId)))
+                .filter(h -> intakeState == null || h.getIntakeState() == intakeState)
                 .filter(h -> archived == null || h.isArchived() == archived)
                 .filter(h -> trainerId == null || isAssignedTo(h, trainerId))
                 .filter(h -> !Boolean.TRUE.equals(noTrainer) || noActiveTrainer(h))
@@ -141,7 +155,7 @@ public class HorseController {
     /** No trainer at all, or one whose account was deactivated: the Club Manager's "Chưa có HLV" filter (TECH-129). */
     private boolean noActiveTrainer(Horse h) {
         UserAccount effective = trainers.effectiveTrainer(h);
-        return effective == null || !effective.isActive();
+        return h.isTakenIn() && (effective == null || !effective.isActive());
     }
 
     /** Changes the main Head Trainer (PERM-045, BR-155). */
@@ -162,6 +176,31 @@ public class HorseController {
     @org.springframework.web.bind.annotation.DeleteMapping("/{id}/trainer/temporary")
     public HorseDto endLoan(@PathVariable Long id) {
         return dto(service.endLoan(id));
+    }
+
+    /** Changes one person of the care team of a horse; the new person must have room (BR-259, BR-257). */
+    @Operation(summary = "Đổi người phụ trách (HLV, bác sĩ thú y hoặc nhân viên chăm sóc) của một con ngựa")
+    @PutMapping("/{id}/care-team")
+    public HorseDto changeCareTeam(@PathVariable Long id, @RequestBody MoveCareRequest request) {
+        return dto(careTeam.change(id, request.role(), request.toUserId()));
+    }
+
+    /** A substitute Veterinarian or Groom until a return date (BR-258). */
+    @Operation(summary = "Giao tạm cho bác sĩ thú y hoặc nhân viên chăm sóc khác đến ngày trả")
+    @PutMapping("/{id}/{role:veterinarian|groom}/temporary")
+    public HorseDto substitute(@PathVariable Long id, @PathVariable String role,
+                               @Valid @RequestBody SubstituteRequest request) {
+        return dto(careTeam.substitute(id, substituteRole(role), request.userId(), request.until()));
+    }
+
+    @Operation(summary = "Kết thúc việc giao tạm của bác sĩ thú y hoặc nhân viên chăm sóc")
+    @org.springframework.web.bind.annotation.DeleteMapping("/{id}/{role:veterinarian|groom}/temporary")
+    public HorseDto endSubstitute(@PathVariable Long id, @PathVariable String role) {
+        return dto(careTeam.endSubstitute(id, substituteRole(role)));
+    }
+
+    private static CareRole substituteRole(String role) {
+        return "groom".equals(role) ? CareRole.GROOM : CareRole.VETERINARIAN;
     }
 
     /** Photo version by horse id, only for the horses the viewer may see and that have a photo (BR-184: avatars in lists). */
@@ -201,11 +240,29 @@ public class HorseController {
                 .body(c.resource());
     }
 
-    @Operation(summary = "Đăng ký ngựa mới")
+    @Operation(summary = "Chủ ngựa đăng ký ngựa của mình (chờ tiếp nhận)")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public HorseDto register(@Valid @RequestBody HorseRequest request) {
         return dto(service.register(request.toProfile()));
+    }
+
+    @Operation(summary = "Quản lý CLB tiếp nhận ngựa đang chờ, chọn huấn luyện viên, bác sĩ thú y và nhân viên chăm sóc")
+    @PostMapping("/{id}/accept")
+    public HorseDto accept(@PathVariable Long id, @RequestBody TakeInRequest request) {
+        return dto(service.takeIn(id, request.trainerId(), request.veterinarianId(), request.groomId()));
+    }
+
+    @Operation(summary = "Quản lý CLB từ chối tiếp nhận kèm lý do")
+    @PostMapping("/{id}/refuse")
+    public HorseDto refuse(@PathVariable Long id, @Valid @RequestBody RefuseRequest request) {
+        return dto(service.refuse(id, request.reason()));
+    }
+
+    @Operation(summary = "Chủ ngựa rút đăng ký khi ngựa còn chờ tiếp nhận")
+    @PostMapping("/{id}/withdraw")
+    public HorseDto withdraw(@PathVariable Long id) {
+        return dto(service.withdraw(id));
     }
 
     @Operation(summary = "Cập nhật hồ sơ ngựa")

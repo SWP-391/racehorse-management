@@ -1,5 +1,6 @@
 package vn.racehorse.ration.service;
 
+import vn.racehorse.security.HorseVisibility;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +18,13 @@ import vn.racehorse.ration.dto.RationView;
 import vn.racehorse.ration.entity.ItemType;
 import vn.racehorse.ration.entity.RationItem;
 import vn.racehorse.ration.entity.RationMeal;
+import vn.racehorse.ration.entity.RationTag;
+import vn.racehorse.ration.entity.RationTemplate;
+import vn.racehorse.ration.repository.RationTemplateRepository;
+import vn.racehorse.ration.dto.MismatchInput;
+import vn.racehorse.ration.dto.SaveRequest;
+import vn.racehorse.health.entity.HealthStatus;
+import vn.racehorse.health.repository.HorseHealthRepository;
 import vn.racehorse.ration.entity.RationVersion;
 import vn.racehorse.ration.repository.RationVersionRepository;
 import vn.racehorse.security.AccessGuard;
@@ -47,6 +55,7 @@ public class RationService {
 
     private static final BigDecimal MAX_QUANTITY = new BigDecimal("100000");
 
+    private final HorseVisibility visibility;
     private final RationVersionRepository versions;
     private final HorseRepository horses;
     private final SupplyItemRepository supplies;
@@ -54,9 +63,17 @@ public class RationService {
     private final AccessGuard access;
     private final AuditService audit;
     private final ClubClock clock;
+    private final RationTemplateRepository templates;
+    private final HorseHealthRepository health;
+    private final RationReview review;
 
     public RationService(RationVersionRepository versions, HorseRepository horses, SupplyItemRepository supplies,
-                         UserAccountRepository accounts, AccessGuard access, AuditService audit, ClubClock clock) {
+                         UserAccountRepository accounts, AccessGuard access, AuditService audit, ClubClock clock,
+                         RationTemplateRepository templates, HorseHealthRepository health, RationReview review, HorseVisibility visibility) {
+        this.visibility = visibility;
+        this.templates = templates;
+        this.health = health;
+        this.review = review;
         this.versions = versions;
         this.horses = horses;
         this.supplies = supplies;
@@ -69,22 +86,18 @@ public class RationService {
     @Transactional(readOnly = true)
     public RationView view(Long horseId) {
         AccountPrincipal user = access.require(Permission.VIEW_RATION);
-        Horse horse = horses.findById(horseId).orElseThrow(() -> ApiException.notFound("ngựa"));
+        Horse horse = visibility.require(horseId);
         boolean owner = user.role() == Role.HORSE_OWNER;
-        if (owner && !ownsHorse(user, horse)) {
-            throw ApiException.forbidden();
-        }
         List<RationVersion> all = versions.findByHorseIdOrderByVersionNoDesc(horseId);
-        return new RationView(horse, all.isEmpty() ? null : all.get(0), owner ? null : all);
+        RationVersion current = all.isEmpty() ? null : all.get(0);
+        return new RationView(horse, current, owner ? null : all, review.needsReview(current, statusOf(horseId)));
     }
 
     /** The current meals of every horse the viewer may see, keyed by horse id (used beside the chore "Cho ăn"). */
     @Transactional(readOnly = true)
     public Map<Horse, RationVersion> currentForVisibleHorses() {
-        AccountPrincipal user = access.require(Permission.VIEW_RATION);
-        List<Horse> visible = (user.role() == Role.HORSE_OWNER
-                ? horses.findByOwnerIdOrderByNameAsc(user.id())
-                : horses.findAllByOrderByNameAsc()).stream().filter(h -> !h.isArchived()).toList();
+        access.require(Permission.VIEW_RATION);
+        List<Horse> visible = visibility.managed().stream().filter(h -> !h.isArchived()).toList();
         Map<Horse, RationVersion> out = new LinkedHashMap<>();
         if (visible.isEmpty()) {
             return out;
@@ -110,25 +123,45 @@ public class RationService {
                 .filter(i -> i.getCategory() == SupplyCategory.FEED).toList();
     }
 
+    private HealthStatus statusOf(Long horseId) {
+        return health.findById(horseId).map(h -> h.getStatus()).orElse(null);
+    }
+
     @Transactional
-    public RationView save(Long horseId, List<RationMealInput> meals) {
+    public RationView save(Long horseId, SaveRequest request) {
         AccountPrincipal actor = access.require(Permission.COMPOSE_RATION);
-        Horse horse = horseId == null ? null : horses.findByIdForUpdate(horseId).orElse(null);
-        if (horse == null) {
-            throw ApiException.notFound("ngựa");
-        }
+        Horse horse = visibility.requireForUpdate(horseId);
+        vn.racehorse.horse.service.HorseService.requireTakenIn(horse);
         if (horse.isArchived()) {
             throw new ApiException(HttpStatus.CONFLICT, "HORSE_ARCHIVED",
                     "Ngựa đã ngừng quản lý: không thể sửa khẩu phần.");
         }
+        List<RationMealInput> meals = request == null ? null : request.meals();
+        RationTag tag = request == null ? RationTag.NORMAL : RationTag.parse(request.conditionTag());
+        if (request != null && request.templateId() != null) {
+            RationTemplate template = templates.findById(request.templateId())
+                    .orElseThrow(() -> ApiException.notFound("mẫu khẩu phần"));
+            if (!template.isActive()) {
+                throw new ApiException(HttpStatus.CONFLICT, "TEMPLATE_INACTIVE", "Mẫu khẩu phần đã ngừng dùng.");
+            }
+            meals = RationTemplateService.toInputs(template);
+            tag = template.getTag();
+        }
+        if (tag == null) {
+            throw invalid("conditionTag", "Loại khẩu phần không hợp lệ.");
+        }
         List<Normal> normal = validate(meals);
         Optional<RationVersion> current = versions.findFirstByHorseIdOrderByVersionNoDesc(horseId);
-        if (current.isPresent() && sameContent(current.get(), normal)) {
+        if (current.isPresent() && current.get().getConditionTag() == tag && sameContent(current.get(), normal)) {
             return view(horseId);
         }
+        HealthStatus status = statusOf(horseId);
+        boolean mismatch = !RationFit.matches(status, tag);
+        String reason = mismatch ? requireMismatch(request == null ? null : request.mismatch(), tag, status) : null;
         UserAccount saver = accounts.findById(actor.id()).orElseThrow();
         int next = current.map(v -> v.getVersionNo() + 1).orElse(1);
         RationVersion version = new RationVersion(horseId, next, clock.today(), saver, clock.now());
+        version.tag(tag, reason);
         int mealPos = 0;
         for (Normal m : normal) {
             RationMeal meal = new RationMeal(version, mealPos++, m.name(), m.time());
@@ -143,19 +176,38 @@ public class RationService {
         details.put("horseId", horseId);
         details.put("version", next);
         details.put("meals", normal.size());
+        details.put("conditionTag", tag.name());
+        if (mismatch) {
+            details.put("healthStatus", status.name());
+            details.put("mismatchReason", reason);
+        }
         audit.record(actor, "RATION_SAVED", "HORSE", horseId, details);
         return view(horseId);
     }
 
     // ---- validation (TECH-099) ----------------------------------------------------------------------------
 
-    private record NormalItem(ItemType type, SupplyItem supply, BigDecimal quantity) {
+    /** BR-251: a ration that does not fit the condition needs a confirmation and a reason of 1 to 1000 characters. */
+    private static String requireMismatch(MismatchInput m, RationTag tag, HealthStatus status) {
+        if (m == null || !Boolean.TRUE.equals(m.confirmed())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "RATION_MISMATCH_CONFIRMATION_REQUIRED",
+                    "Loại khẩu phần \"" + tag.label() + "\" không khớp tình trạng \"" + status.label()
+                            + "\": cần xác nhận và nêu lý do.");
+        }
+        String reason = m.reason() == null ? "" : m.reason().trim();
+        if (reason.isEmpty() || reason.length() > 1000) {
+            throw invalid("mismatch.reason", "Lý do bắt buộc, tối đa 1000 ký tự.");
+        }
+        return reason;
     }
 
-    private record Normal(String name, LocalTime time, List<NormalItem> items) {
+    record NormalItem(ItemType type, SupplyItem supply, BigDecimal quantity) {
     }
 
-    private List<Normal> validate(List<RationMealInput> meals) {
+    record Normal(String name, LocalTime time, List<NormalItem> items) {
+    }
+
+    List<Normal> validate(List<RationMealInput> meals) {
         if (meals == null || meals.isEmpty()) {
             throw invalid("meals", "Khẩu phần cần ít nhất một bữa.");
         }

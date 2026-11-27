@@ -7,9 +7,14 @@ public enum Readiness {
     /** Cần theo dõi */
     UNDER_OBSERVATION,
     /** Không sẵn sàng */
-    NOT_READY;
+    NOT_READY,
+    /** Chưa đủ dữ liệu: ngựa chưa từng được khám (BR-247) */
+    NOT_ENOUGH_DATA;
 
-    public static Readiness of(HealthStatus status, boolean activeLock) {
+    public static Readiness of(HealthStatus status, boolean activeLock, boolean unexamined) {
+        if (unexamined) {
+            return NOT_ENOUGH_DATA;
+        }
         if (activeLock) {
             return NOT_READY;
         }

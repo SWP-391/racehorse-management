@@ -12,7 +12,9 @@ import java.time.LocalDate;
 
 /**
  * Mandatory fields per BR-003; the missing field is named in the response (AC-004). The registration number is
- * generated (BR-192), so a request that carries one is refused (AC-386).
+ * generated (BR-192), so a request that carries one is refused (AC-386). The breed is an entry of the catalog, so
+ * free text is refused (BR-246). The owner is forced to the caller on registration and only the Club Manager sends
+ * one on edit; the trainer is chosen at take-in, and only the Club Manager may change it on an edit.
  */
 public record HorseRequest(
         @NotBlank(message = GlobalExceptionHandler.REQUIRED) @Size(max = 200) String name,
@@ -20,11 +22,11 @@ public record HorseRequest(
         @NotNull(message = GlobalExceptionHandler.REQUIRED) Sex sex,
         @NotNull(message = GlobalExceptionHandler.REQUIRED) @PastOrPresent(message = "Ngày sinh không được ở tương lai.") LocalDate birthDate,
         @Size(max = 100) String coatColour,
-        @Size(max = 100) String breed,
-        @NotNull(message = GlobalExceptionHandler.REQUIRED) Long ownerId,
+        @Null(message = "Giống ngựa chọn từ danh mục, không nhập tay.") String breed,
+        Long breedId,
+        Long ownerId,
         Long trainerId) {
     public HorseProfile toProfile() {
-        return new HorseProfile(name.trim(), sex, birthDate, coatColour, breed,
-                ownerId, trainerId);
+        return new HorseProfile(name.trim(), sex, birthDate, coatColour, breedId, ownerId, trainerId);
     }
 }

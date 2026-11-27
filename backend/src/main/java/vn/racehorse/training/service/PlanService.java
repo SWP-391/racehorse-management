@@ -1,5 +1,6 @@
 package vn.racehorse.training.service;
 
+import vn.racehorse.security.HorseVisibility;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
@@ -47,6 +48,7 @@ public class PlanService {
     private static final Set<SessionState> SHIFTABLE =
             EnumSet.of(SessionState.DRAFT, SessionState.SCHEDULED, SessionState.AWAITING_REVIEW);
 
+    private final HorseVisibility visibility;
     private final TrainingPlanRepository plans;
     private final TrainingSessionRepository sessions;
     private final PlanVersionRepository versions;
@@ -60,7 +62,8 @@ public class PlanService {
 
     public PlanService(TrainingPlanRepository plans, TrainingSessionRepository sessions, PlanVersionRepository versions,
                        HorseRepository horses, UserAccountRepository accounts, HealthService health,
-                       AccessGuard access, AuditService audit, ClubClock clock, ObjectMapper json) {
+                       AccessGuard access, AuditService audit, ClubClock clock, ObjectMapper json, HorseVisibility visibility) {
+        this.visibility = visibility;
         this.plans = plans;
         this.sessions = sessions;
         this.versions = versions;
@@ -408,15 +411,19 @@ public class PlanService {
     }
 
     private TrainingPlan plan(Long planId) {
-        return plans.findById(planId).orElseThrow(() -> ApiException.notFound("giáo án"));
+        TrainingPlan plan = plans.findById(planId).orElseThrow(() -> ApiException.notFound("giáo án"));
+        // A plan of a horse the person may not see answers as not found (BR-153, BR-261).
+        visibility.require(plan.getHorseId());
+        return plan;
     }
 
     private Horse horse(Long horseId) {
-        return horses.findById(horseId).orElseThrow(() -> ApiException.notFound("ngựa"));
+        return visibility.require(horseId);
     }
 
     private Horse managedHorse(Long horseId) {
         Horse horse = horse(horseId);
+        vn.racehorse.horse.service.HorseService.requireTakenIn(horse);
         if (horse.isArchived()) {
             throw new ApiException(HttpStatus.CONFLICT, "HORSE_ARCHIVED",
                     "Ngựa đã ngừng quản lý: không thể tạo hoặc sửa giáo án.");

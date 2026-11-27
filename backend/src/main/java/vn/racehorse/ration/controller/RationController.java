@@ -35,7 +35,7 @@ public class RationController {
     private static RationDto dto(RationView v) {
         return new RationDto(v.horse().getId(), v.horse().getName(), v.horse().isArchived(),
                 v.current() == null ? null : VersionDto.of(v.current()),
-                v.history() == null ? null : v.history().stream().map(VersionDto::of).toList());
+                v.history() == null ? null : v.history().stream().map(VersionDto::of).toList(), v.needsReview());
     }
 
     @Operation(summary = "Khẩu phần của một con ngựa")
@@ -47,7 +47,7 @@ public class RationController {
     @Operation(summary = "Lưu khẩu phần của một con ngựa")
     @PutMapping("/horses/{id}/ration")
     public RationDto save(@PathVariable Long id, @RequestBody SaveRequest request) {
-        return dto(service.save(id, request == null ? null : request.meals()));
+        return dto(service.save(id, request));
     }
 
     /** Active Thức ăn items for the Veterinarian's picker (TECH-101). */

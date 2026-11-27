@@ -1,5 +1,6 @@
 package vn.racehorse.training.service;
 
+import vn.racehorse.security.HorseVisibility;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.http.HttpStatus;
@@ -60,6 +61,7 @@ import java.util.Optional;
 @Service
 public class SessionService {
 
+    private final HorseVisibility visibility;
     private final TrainingSessionRepository sessions;
     private final TrainingPlanRepository plans;
     private final HorseRepository horses;
@@ -78,7 +80,8 @@ public class SessionService {
                           UserAccountRepository accounts, HealthService health, ClubSettings settings,
                           AccessGuard access, AuditService audit, NotificationService notifications, ClubClock clock,
                           ApplicationEventPublisher events, HorseTrainerService trainers,
-                          GroomAvailability availability) {
+                          GroomAvailability availability, HorseVisibility visibility) {
+        this.visibility = visibility;
         this.sessions = sessions;
         this.plans = plans;
         this.horses = horses;
@@ -102,6 +105,7 @@ public class SessionService {
         if (user.role() == Role.HORSE_OWNER) {
             throw ApiException.forbidden();
         }
+        plan(planId);
         return sessions.findByPlanIdOrderByScheduledDateAscIdAsc(planId).stream()
                 .sorted(SessionTimes.byDateThenTime(true)).toList();
     }
@@ -330,7 +334,7 @@ public class SessionService {
     @Transactional
     public AssignedSession acknowledge(Long sessionId) {
         AccountPrincipal actor = access.require(Permission.ACKNOWLEDGE_ASSIGNMENT);
-        TrainingSession s = session(sessionId);
+        TrainingSession s = sessionOfResponsible(sessionId);
         if (s.getResponsiblePerson() == null || !s.getResponsiblePerson().getId().equals(actor.id())) {
             throw ApiException.forbidden();
         }
@@ -352,7 +356,7 @@ public class SessionService {
     @Transactional
     public TrainingSession decline(Long sessionId, String reason) {
         AccountPrincipal actor = access.require(Permission.ACKNOWLEDGE_ASSIGNMENT);
-        TrainingSession s = session(sessionId);
+        TrainingSession s = sessionOfResponsible(sessionId);
         if (s.getResponsiblePerson() == null || !s.getResponsiblePerson().getId().equals(actor.id())) {
             throw ApiException.forbidden();
         }
@@ -739,7 +743,8 @@ public class SessionService {
     }
 
     private Horse managedHorse(Long horseId) {
-        Horse horse = horses.findById(horseId).orElseThrow(() -> ApiException.notFound("ngựa"));
+        Horse horse = visibility.require(horseId);
+        vn.racehorse.horse.service.HorseService.requireTakenIn(horse);
         if (horse.isArchived()) {
             throw new ApiException(HttpStatus.CONFLICT, "HORSE_ARCHIVED", "Ngựa đã ngừng quản lý.");
         }
@@ -747,10 +752,22 @@ public class SessionService {
     }
 
     private TrainingPlan plan(Long planId) {
-        return plans.findById(planId).orElseThrow(() -> ApiException.notFound("giáo án"));
+        TrainingPlan plan = plans.findById(planId).orElseThrow(() -> ApiException.notFound("giáo án"));
+        visibility.require(plan.getHorseId());
+        return plan;
     }
 
     private TrainingSession session(Long sessionId) {
+        TrainingSession s = sessions.findById(sessionId).orElseThrow(() -> ApiException.notFound("buổi tập"));
+        visibility.require(s.getHorseId());
+        return s;
+    }
+
+    /**
+     * A session read by its responsible Groom (PERM-032, PERM-033): the Groom works a session as responsible person,
+     * not as the person who looks after the horse, so this one lookup does not ask {@code HorseVisibility}.
+     */
+    private TrainingSession sessionOfResponsible(Long sessionId) {
         return sessions.findById(sessionId).orElseThrow(() -> ApiException.notFound("buổi tập"));
     }
 

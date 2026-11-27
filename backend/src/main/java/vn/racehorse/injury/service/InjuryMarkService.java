@@ -1,5 +1,6 @@
 package vn.racehorse.injury.service;
 
+import vn.racehorse.security.HorseVisibility;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +37,7 @@ import java.util.stream.Collectors;
 @Service
 public class InjuryMarkService {
 
+    private final HorseVisibility visibility;
     private final InjuryMarkRepository marks;
     private final InjuryMarkEventRepository events;
     private final HorseRepository horses;
@@ -47,7 +49,8 @@ public class InjuryMarkService {
 
     public InjuryMarkService(InjuryMarkRepository marks, InjuryMarkEventRepository events, HorseRepository horses,
                              ExaminationRepository exams, UserAccountRepository accounts, AccessGuard access,
-                             AuditService audit, ClubClock clock) {
+                             AuditService audit, ClubClock clock, HorseVisibility visibility) {
+        this.visibility = visibility;
         this.marks = marks;
         this.events = events;
         this.horses = horses;
@@ -61,7 +64,7 @@ public class InjuryMarkService {
     @Transactional
     public InjuryMarkView create(Long horseId, String regionCode, Long examinationId) {
         AccountPrincipal actor = access.require(Permission.MANAGE_INJURY_MARKS);
-        Horse horse = horses.findById(horseId).orElseThrow(() -> ApiException.notFound("ngựa"));
+        Horse horse = visibility.require(horseId);
         if (horse.isArchived()) {
             throw new ApiException(HttpStatus.CONFLICT, "HORSE_ARCHIVED", "Ngựa đã ngừng quản lý: hồ sơ chỉ xem.");
         }
@@ -89,7 +92,7 @@ public class InjuryMarkService {
     public InjuryMarkView changeStatus(Long markId, MarkStatus next, String note) {
         AccountPrincipal actor = access.require(Permission.MANAGE_INJURY_MARKS);
         InjuryMark mark = marks.findById(markId).orElseThrow(() -> ApiException.notFound("dấu chấn thương"));
-        Horse horse = horses.findById(mark.getHorseId()).orElseThrow(() -> ApiException.notFound("ngựa"));
+        Horse horse = visibility.require(mark.getHorseId());
         if (horse.isArchived()) {
             throw new ApiException(HttpStatus.CONFLICT, "HORSE_ARCHIVED", "Ngựa đã ngừng quản lý: hồ sơ chỉ xem.");
         }
@@ -108,7 +111,7 @@ public class InjuryMarkService {
     public InjuryMarkView cancel(Long markId, String reason) {
         AccountPrincipal actor = access.require(Permission.MANAGE_INJURY_MARKS);
         InjuryMark mark = marks.findById(markId).orElseThrow(() -> ApiException.notFound("dấu chấn thương"));
-        Horse horse = horses.findById(mark.getHorseId()).orElseThrow(() -> ApiException.notFound("ngựa"));
+        Horse horse = visibility.require(mark.getHorseId());
         if (horse.isArchived()) {
             throw new ApiException(HttpStatus.CONFLICT, "HORSE_ARCHIVED", "Ngựa đã ngừng quản lý: hồ sơ chỉ xem.");
         }
@@ -145,7 +148,7 @@ public class InjuryMarkService {
     @Transactional(readOnly = true)
     public List<InjuryMarkView> list(Long horseId) {
         access.require(Permission.VIEW_INJURY_MARKS);
-        horses.findById(horseId).orElseThrow(() -> ApiException.notFound("ngựa"));
+        visibility.require(horseId);
         List<InjuryMark> found = marks.findByHorseIdOrderByCreatedAtDescIdDesc(horseId);
         Map<Long, List<InjuryMarkEvent>> byMark = found.isEmpty() ? Map.of()
                 : events.findByMarkIdInOrderByIdAsc(found.stream().map(InjuryMark::getId).toList()).stream()

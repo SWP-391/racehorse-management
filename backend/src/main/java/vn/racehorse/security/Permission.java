@@ -16,7 +16,7 @@ public enum Permission {
     VIEW_HORSES("PERM-001", Role.HEAD_TRAINER, Role.VETERINARIAN, Role.HORSE_OWNER, Role.CLUB_MANAGER),
     /** PERM-002 View the minimal horse list (name, registration number) to choose a horse for an incident. */
     VIEW_HORSE_OPTIONS("PERM-002", Role.HEAD_TRAINER, Role.VETERINARIAN, Role.GROOM, Role.CLUB_MANAGER),
-    /** PERM-003 Create and edit horse profile and pedigree. */
+    /** PERM-003 Edit horse profile and pedigree (registration is PERM-062, take-in PERM-063). */
     MANAGE_HORSES("PERM-003", Role.CLUB_MANAGER),
     /** PERM-004 Archive and restore a horse. */
     ARCHIVE_HORSES("PERM-004", Role.CLUB_MANAGER),
@@ -131,7 +131,21 @@ public enum Permission {
     /** PERM-060 View received payments and unmatched transfers, assign an unmatched transfer with a reason (BR-222). */
     MANAGE_PAYMENTS("PERM-060", Role.CLUB_MANAGER),
     /** PERM-061 Start, read, answer, close and reopen conversations with the people BR-228 allows (DEC-075). */
-    MESSAGING("PERM-061", Role.HEAD_TRAINER, Role.VETERINARIAN, Role.GROOM, Role.HORSE_OWNER, Role.CLUB_MANAGER);
+    MESSAGING("PERM-061", Role.HEAD_TRAINER, Role.VETERINARIAN, Role.GROOM, Role.HORSE_OWNER, Role.CLUB_MANAGER),
+    /** PERM-062 Register an own horse and edit or withdraw it while it waits for take-in (BR-243, DEC-080). */
+    REGISTER_OWN_HORSE("PERM-062", Role.HORSE_OWNER),
+    /** PERM-063 Take a waiting horse in (choose the Head Trainer) or refuse it with a reason (BR-244, DEC-080). */
+    TAKE_IN_HORSES("PERM-063", Role.CLUB_MANAGER),
+    /** PERM-064 Manage the breed catalog (BR-246, DEC-081). */
+    MANAGE_BREEDS("PERM-064", Role.CLUB_MANAGER),
+    /** PERM-065 Manage ration templates and start a ration from one (BR-249, DEC-083). */
+    MANAGE_RATION_TEMPLATES("PERM-065", Role.VETERINARIAN),
+    /** PERM-066 Edit the own profile (name, phone) and change the own password (BR-254, DEC-092). */
+    EDIT_OWN_PROFILE("PERM-066", Role.HEAD_TRAINER, Role.VETERINARIAN, Role.GROOM, Role.HORSE_OWNER, Role.CLUB_MANAGER),
+    /** PERM-067 See the data of a horse: own horses only, the Club Manager sees all (BR-261, DEC-088). */
+    SEE_HORSES("PERM-067", Role.HEAD_TRAINER, Role.VETERINARIAN, Role.GROOM, Role.HORSE_OWNER, Role.CLUB_MANAGER),
+    /** PERM-068 Assign, move and set substitutes of the Veterinarian and the Groom of a horse (BR-256, BR-258, BR-259, DEC-086). */
+    MANAGE_CARE_TEAM("PERM-068", Role.CLUB_MANAGER);
 
     private final String baId;
     private final Set<Role> allowed;

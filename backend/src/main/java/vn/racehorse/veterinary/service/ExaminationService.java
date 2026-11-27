@@ -1,5 +1,6 @@
 package vn.racehorse.veterinary.service;
 
+import vn.racehorse.security.HorseVisibility;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +37,7 @@ import java.util.Objects;
 @Service
 public class ExaminationService {
 
+    private final HorseVisibility visibility;
     private final ExaminationRepository exams;
     private final HorseRepository horses;
     private final UserAccountRepository accounts;
@@ -48,7 +50,8 @@ public class ExaminationService {
 
     public ExaminationService(ExaminationRepository exams, HorseRepository horses, UserAccountRepository accounts,
                               HealthService health, AccessGuard access, AuditService audit, ClubClock clock,
-                              BillingPriceService billingPrices, ChargeService charges) {
+                              BillingPriceService billingPrices, ChargeService charges, HorseVisibility visibility) {
+        this.visibility = visibility;
         this.exams = exams;
         this.horses = horses;
         this.accounts = accounts;
@@ -63,7 +66,8 @@ public class ExaminationService {
     @Transactional
     public Examination record(Long horseId, ExaminationInput in) {
         AccountPrincipal actor = access.require(Permission.RECORD_EXAMINATIONS);
-        Horse horse = horses.findById(horseId).orElseThrow(() -> ApiException.notFound("ngựa"));
+        Horse horse = visibility.require(horseId);
+        vn.racehorse.horse.service.HorseService.requireTakenIn(horse);
         if (horse.isArchived()) {
             throw new ApiException(HttpStatus.CONFLICT, "HORSE_ARCHIVED", "Ngựa đã ngừng quản lý: hồ sơ chỉ xem.");
         }
@@ -114,18 +118,15 @@ public class ExaminationService {
     @Transactional(readOnly = true)
     public List<Examination> history(Long horseId) {
         access.require(Permission.VIEW_EXAMINATIONS);
-        horses.findById(horseId).orElseThrow(() -> ApiException.notFound("ngựa"));
+        visibility.require(horseId);
         return exams.findByHorseIdOrderByExamDateDescIdDesc(horseId);
     }
 
     /** Weights only, for an Owner's own horses (BR-081); never activity status. */
     @Transactional(readOnly = true)
     public List<ExaminationWeightPoint> weights(Long horseId) {
-        AccountPrincipal user = access.require(Permission.VIEW_READINESS);
-        Horse horse = horses.findById(horseId).orElseThrow(() -> ApiException.notFound("ngựa"));
-        if (user.role() == Role.HORSE_OWNER && !Objects.equals(horse.getOwner().getId(), user.id())) {
-            throw ApiException.forbidden();
-        }
+        access.require(Permission.VIEW_READINESS);
+        visibility.require(horseId);
         return exams.findByHorseIdAndWeightKgIsNotNullOrderByExamDateAscIdAsc(horseId).stream()
                 .map(e -> new ExaminationWeightPoint(e.getExamDate(), e.getWeightKg())).toList();
     }

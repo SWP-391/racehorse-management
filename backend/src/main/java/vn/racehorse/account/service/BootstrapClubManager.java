@@ -25,6 +25,7 @@ import java.util.Optional;
  * (BR-212, TECH-227).
  */
 @Component
+@org.springframework.core.annotation.Order(10)
 public class BootstrapClubManager implements ApplicationRunner {
 
     private final UserAccountRepository accounts;
@@ -45,10 +46,16 @@ public class BootstrapClubManager implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        List<UserAccount> managers = accounts.findByRoleOrderByDisplayNameAsc(Role.CLUB_MANAGER).stream()
-                .filter(UserAccount::isActive).toList();
-        if (managers.isEmpty()) {
+        List<UserAccount> all = accounts.findByRoleOrderByDisplayNameAsc(Role.CLUB_MANAGER);
+        List<UserAccount> managers = all.stream().filter(UserAccount::isActive).toList();
+        if (all.isEmpty()) {
             create();
+        } else if (managers.isEmpty()) {
+            // The club has exactly one Club Manager (BR-242): a second one is never created, even when the first is
+            // deactivated. The operator restores that account.
+            throw new IllegalStateException("The only Club Manager is deactivated and the club allows exactly one, so "
+                    + "none is created. Restore that account in the database (active = true; on Railway run "
+                    + "scripts/railway-restore-admin.sh), then start again.");
         } else if (managers.stream().noneMatch(m -> m.getEmail() != null)) {
             adopt(managers);
         }

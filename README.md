@@ -34,7 +34,7 @@ scripts/backend.sh -q package -DskipTests
 # 2. Start PostgreSQL, the service and the web client
 BOOTSTRAP_EMAIL='admin@racehorse.example' BOOTSTRAP_PASSWORD='choose-a-password' docker compose --profile app up -d
 
-# 3. Open http://localhost:5173 and sign in with that email and password
+# 3. Open http://localhost:5180 and sign in with that email and password
 ```
 
 The first Club Manager account is created at first start-up from `BOOTSTRAP_EMAIL` / `BOOTSTRAP_PASSWORD`; the email is what the person signs in with. Other accounts are created by a Club Manager afterwards, each with one email. By default the Club Manager gives no password: the account waits as "Chờ kích hoạt" and the person activates it on the page `/activate` with a code (valid 24 hours) mailed to that email; the Club Manager can resend the code or correct the email. The Club Manager can also rename any account, their own included, with the pencil button "Sửa tên" on the accounts page (`PUT /api/accounts/{id}/name`); the change is written to the audit log with the old and the new name. "Đặt mật khẩu ngay" keeps the old way for accounts without a mailbox, such as the demo accounts. A forgotten password is recovered with a code sent to that email through the HTTPS API of Brevo (`BREVO_API_KEY`, `MAIL_FROM`, `MAIL_FROM_NAME`).

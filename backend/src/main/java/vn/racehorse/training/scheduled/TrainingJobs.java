@@ -22,8 +22,11 @@ class TrainingJobs {
 
     private final SessionService sessions;
     private final HorseTrainerService trainers;
+    private final vn.racehorse.horse.service.CareTeamService careTeam;
 
-    TrainingJobs(SessionService sessions, HorseTrainerService trainers) {
+    TrainingJobs(SessionService sessions, HorseTrainerService trainers,
+                 vn.racehorse.horse.service.CareTeamService careTeam) {
+        this.careTeam = careTeam;
         this.sessions = sessions;
         this.trainers = trainers;
     }
@@ -35,7 +38,7 @@ class TrainingJobs {
             int closed = sessions.autoClose();
             int missed = sessions.markMissed();
             int reminders = sessions.sendAssignmentReminders();
-            int returned = trainers.endExpiredLoans();
+            int returned = trainers.endExpiredLoans() + careTeam.endExpiredSubstitutes();
             if (overtime + closed + missed + reminders + returned > 0) {
                 log.info("training jobs: {} overtime, {} auto-closed, {} missed, {} reminders, {} loans ended",
                         overtime, closed, missed, reminders, returned);

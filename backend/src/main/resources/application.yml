@@ -30,6 +30,9 @@ spring:
       hibernate.jdbc.time_zone: UTC
   flyway:
     enabled: true
+    placeholders:
+      # V27 keeps the Club Manager with this email (the same value as app.bootstrap.email); empty keeps the oldest.
+      bootstrap_email: ${app.bootstrap.email:}
 
 server:
   port: ${PORT:8080}
@@ -37,6 +40,8 @@ server:
   forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
   servlet:
     session:
+      # The container timeout; LoginSessionService lists a sign-in as live for exactly this long.
+      timeout: 30m
       cookie:
         http-only: true
         same-site: lax

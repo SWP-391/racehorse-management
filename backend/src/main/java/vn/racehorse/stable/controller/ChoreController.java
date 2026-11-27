@@ -39,9 +39,11 @@ import java.time.LocalDate;
 public class ChoreController {
 
     private final ChoreService service;
+    private final vn.racehorse.ration.service.RationReview rationReview;
 
-    public ChoreController(ChoreService service) {
+    public ChoreController(ChoreService service, vn.racehorse.ration.service.RationReview rationReview) {
         this.service = service;
+        this.rationReview = rationReview;
     }
 
     /** The chore history of a date range, 20 horses a page (default: the last 7 days, read-only; BR-188). */
@@ -83,12 +85,14 @@ public class ChoreController {
                        @RequestParam(required = false) String q) {
         PageParams params = PageParams.of(page, size, q);
         ChoreDay day = service.list(date);
+        // BR-250: a warning only, feeding is never blocked.
+        java.util.Set<Long> warned = rationReview.needingReview(day.horses().stream().map(h -> h.horse().getId()).toList());
         PageResponse<HorseChoresDto> paged = Paging.page(day.horses().stream()
                 .filter(h -> !Boolean.TRUE.equals(pending) || h.chores().stream().anyMatch(c -> !c.done()))
                 .filter(h -> Search.matches(params.q(), h.horse().getName(), h.horse().getRegistrationNumber()))
                 .map(h -> new HorseChoresDto(h.horse().getId(), h.horse().getName(),
                         h.horse().getRegistrationNumber(), StallDto.of(h.horse()),
-                        h.chores().stream().map(ChoreDto::of).toList())).toList(), params);
+                        h.chores().stream().map(ChoreDto::of).toList(), warned.contains(h.horse().getId()))).toList(), params);
         return new DayDto(day.date(), day.today(), paged.items(), paged.page(), paged.size(), paged.total());
     }
 

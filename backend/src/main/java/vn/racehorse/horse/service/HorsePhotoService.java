@@ -1,5 +1,6 @@
 package vn.racehorse.horse.service;
 
+import vn.racehorse.security.HorseVisibility;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,6 +48,7 @@ public class HorsePhotoService {
     static final int MAX_SIDE = 8000;
     static final long MAX_PIXELS = 40_000_000L;
 
+    private final HorseVisibility visibility;
     private final HorseRepository horses;
     private final HorseService horseService;
     private final PhotoStorage storage;
@@ -55,7 +57,8 @@ public class HorsePhotoService {
     private final ClubClock clock;
 
     public HorsePhotoService(HorseRepository horses, HorseService horseService, PhotoStorage storage,
-                             AccessGuard access, AuditService audit, ClubClock clock) {
+                             AccessGuard access, AuditService audit, ClubClock clock, HorseVisibility visibility) {
+        this.visibility = visibility;
         this.horses = horses;
         this.horseService = horseService;
         this.storage = storage;
@@ -66,8 +69,16 @@ public class HorsePhotoService {
 
     @Transactional
     public Horse put(Long horseId, MultipartFile file) {
-        AccountPrincipal actor = access.require(Permission.MANAGE_HORSES);
-        Horse horse = horses.findById(horseId).orElseThrow(() -> ApiException.notFound("ngựa"));
+        AccountPrincipal who = access.current();
+        boolean owner = who != null && who.role() == vn.racehorse.account.entity.Role.HORSE_OWNER;
+        AccountPrincipal actor = access.require(owner ? Permission.REGISTER_OWN_HORSE : Permission.MANAGE_HORSES);
+        Horse horse = visibility.require(horseId);
+        if (owner && !horse.getOwner().getId().equals(actor.id())) {
+            throw vn.racehorse.security.HorseVisibility.notFound();
+        }
+        if (owner && horse.getIntakeState() != vn.racehorse.horse.entity.IntakeState.PENDING) {
+            throw ApiException.forbidden();
+        }
         if (horse.isArchived()) {
             throw new ApiException(HttpStatus.CONFLICT, "HORSE_ARCHIVED", HorseService.ARCHIVED);
         }

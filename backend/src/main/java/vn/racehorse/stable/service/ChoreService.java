@@ -1,5 +1,6 @@
 package vn.racehorse.stable.service;
 
+import vn.racehorse.security.HorseVisibility;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -53,6 +54,7 @@ import java.util.Map;
 @Service
 public class ChoreService {
 
+    private final HorseVisibility visibility;
     private final ChoreEntryRepository entries;
     private final HorseRepository horses;
     private final UserAccountRepository accounts;
@@ -66,7 +68,8 @@ public class ChoreService {
 
     public ChoreService(ChoreEntryRepository entries, HorseRepository horses, UserAccountRepository accounts,
                         AccessGuard access, AuditService audit, ClubClock clock, GroomScheduleService schedules,
-                        RationQuantities rations, StockService stock, StockNotices stockNotices) {
+                        RationQuantities rations, StockService stock, StockNotices stockNotices, HorseVisibility visibility) {
+        this.visibility = visibility;
         this.rations = rations;
         this.stock = stock;
         this.stockNotices = stockNotices;
@@ -195,10 +198,9 @@ public class ChoreService {
             throw ApiException.invalid("VALIDATION_FAILED", "chore", "Việc chăm sóc không hợp lệ.");
         }
         LocalDate day = date == null || date.isBlank() ? clock.today() : parseDate(date);
-        Horse horse = horseId == null ? null : horses.findById(horseId).orElse(null);
-        if (horse == null) {
-            throw ApiException.notFound("ngựa");
-        }
+        Horse horse = visibility.require(horseId);
+        requireActing(actor, horse);
+        vn.racehorse.horse.service.HorseService.requireTakenIn(horse);
         if (horse.isArchived()) {
             throw new ApiException(HttpStatus.CONFLICT, "HORSE_ARCHIVED", "Ngựa đã ngừng quản lý: không thể đánh dấu việc.");
         }
@@ -292,11 +294,9 @@ public class ChoreService {
         if (!day.isBefore(clock.today())) {
             throw ApiException.invalid("DATE_NOT_PAST", "date", "Chỉ bổ sung được ngày đã qua.");
         }
-        Horse horse = horseId == null ? null : horses.findById(horseId).orElse(null);
-        if (horse == null) {
-            throw ApiException.notFound("ngựa");
-        }
-        if (clock.toClubTime(horse.getCreatedAt()).toLocalDate().isAfter(day)) {
+        Horse horse = visibility.require(horseId);
+        vn.racehorse.horse.service.HorseService.requireTakenIn(horse);
+        if (clock.toClubTime(horse.getAcceptedAt()).toLocalDate().isAfter(day)) {
             throw ApiException.invalid("HORSE_NOT_YET_MANAGED", "date", "Ngựa chưa được quản lý vào ngày này.");
         }
         if (horse.getArchivedAt() != null && clock.toClubTime(horse.getArchivedAt()).toLocalDate().isBefore(day)) {
@@ -357,7 +357,7 @@ public class ChoreService {
         if (user.role() == Role.HORSE_OWNER) {
             throw ApiException.forbidden();
         }
-        horses.findById(horseId).orElseThrow(() -> ApiException.notFound("ngựa"));
+        requireActing(user, visibility.require(horseId));
         return entries.findByHorseIdOrderByChoreDateDescMarkedAtDescIdDesc(horseId);
     }
 
@@ -372,22 +372,35 @@ public class ChoreService {
         if (!day.isBefore(clock.today())) {
             return visibleHorses(user);
         }
-        List<Horse> all = user.role() == Role.HORSE_OWNER
-                ? horses.findByOwnerIdOrderByNameAsc(user.id())
-                : horses.findAllByOrderByNameAsc();
-        return all.stream()
+        return visibility.managed().stream()
                 .filter(h -> withEntries.contains(h.getId())
-                        || (!clock.toClubTime(h.getCreatedAt()).toLocalDate().isAfter(day)
+                        || (!clock.toClubTime(h.getAcceptedAt()).toLocalDate().isAfter(day)
                         && (h.getArchivedAt() == null || !clock.toClubTime(h.getArchivedAt()).toLocalDate().isBefore(day))))
                 .toList();
     }
 
     /** Non-archived horses the user may see: every one, or only own for a Horse Owner (BR-127, TECH-094). */
     List<Horse> visibleHorses(AccountPrincipal user) {
-        List<Horse> all = user.role() == Role.HORSE_OWNER
-                ? horses.findByOwnerIdOrderByNameAsc(user.id())
-                : horses.findAllByOrderByNameAsc();
-        return all.stream().filter(h -> !h.isArchived()).toList();
+        return visibility.managed().stream().filter(h -> !h.isArchived()).filter(h -> acts(user, h)).toList();
+    }
+
+    /**
+     * A Groom works the horses they stand in for today: the main Groom, or the substitute while the return date has not
+     * come, so while G2 substitutes G1 for a horse, G2 sees and marks it and G1 may not (BR-258, BR-263, AC-603). Every
+     * other role works by {@link HorseVisibility} alone.
+     */
+    private boolean acts(AccountPrincipal user, Horse horse) {
+        if (user.role() != Role.GROOM) {
+            return true;
+        }
+        UserAccount acting = vn.racehorse.horse.entity.CareRole.GROOM.effective(horse, clock.today());
+        return acting != null && acting.getId().equals(user.id());
+    }
+
+    private void requireActing(AccountPrincipal user, Horse horse) {
+        if (!acts(user, horse)) {
+            throw HorseVisibility.notFound();
+        }
     }
 
     Map<Long, Map<Chore, ChoreEntry>> doneByHorse(LocalDate day) {

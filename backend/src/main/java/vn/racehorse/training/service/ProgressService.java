@@ -1,5 +1,6 @@
 package vn.racehorse.training.service;
 
+import vn.racehorse.security.HorseVisibility;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vn.racehorse.account.entity.Role;
@@ -32,6 +33,7 @@ public class ProgressService {
     static final Set<SessionState> DONE = EnumSet.of(SessionState.COMPLETED, SessionState.AUTO_CLOSED);
     private static final int RECENT = 5;
 
+    private final HorseVisibility visibility;
     private final HorseRepository horses;
     private final TrainingPlanRepository plans;
     private final TrainingSessionRepository sessions;
@@ -39,7 +41,8 @@ public class ProgressService {
     private final AccessGuard access;
 
     public ProgressService(HorseRepository horses, TrainingPlanRepository plans, TrainingSessionRepository sessions,
-                           HealthService health, AccessGuard access) {
+                           HealthService health, AccessGuard access, HorseVisibility visibility) {
+        this.visibility = visibility;
         this.horses = horses;
         this.plans = plans;
         this.sessions = sessions;
@@ -54,7 +57,7 @@ public class ProgressService {
     @Transactional(readOnly = true)
     public List<BoardRow> board() {
         access.require(Permission.VIEW_PROGRESS_BOARD);
-        return horses.findAllByOrderByNameAsc().stream().filter(h -> !h.isArchived()).map(h -> {
+        return visibility.managed().stream().filter(h -> !h.isArchived()).map(h -> {
             List<TrainingPlan> horsePlans = plans.findByHorseIdOrderByCreatedAtDesc(h.getId());
             TrainingPlan current = horsePlans.stream().filter(p -> p.getState() == PlanState.ACTIVE).findFirst()
                     .or(() -> horsePlans.stream().filter(p -> p.getState() == PlanState.DRAFT).findFirst())
@@ -71,11 +74,8 @@ public class ProgressService {
     /** Sessions and comments of one horse; an Owner only for horses they own (PERM-012, BR-006). */
     @Transactional(readOnly = true)
     public List<TrainingSession> schedule(Long horseId) {
-        AccountPrincipal user = access.require(Permission.VIEW_PLANS);
-        Horse horse = horses.findById(horseId).orElseThrow(() -> ApiException.notFound("ngựa"));
-        if (user.role() == Role.HORSE_OWNER && !Objects.equals(horse.getOwner().getId(), user.id())) {
-            throw ApiException.forbidden();
-        }
+        access.require(Permission.VIEW_PLANS);
+        visibility.require(horseId);
         return sessions.findByHorseIdOrderByScheduledDateDescIdDesc(horseId).stream()
                 .filter(s -> s.getState() != SessionState.DRAFT)
                 .sorted(SessionTimes.byDateThenTime(false)).toList();

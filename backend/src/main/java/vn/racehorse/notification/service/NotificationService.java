@@ -9,6 +9,8 @@ import vn.racehorse.account.entity.UserAccount;
 import vn.racehorse.account.repository.UserAccountRepository;
 import vn.racehorse.common.ClubClock;
 import vn.racehorse.common.exception.ApiException;
+import vn.racehorse.horse.entity.CareRole;
+import vn.racehorse.horse.entity.Horse;
 import vn.racehorse.notification.entity.Notification;
 import vn.racehorse.notification.repository.NotificationRepository;
 import vn.racehorse.security.AccessGuard;
@@ -44,6 +46,60 @@ public class NotificationService {
                 notifications.save(new Notification(account.getId(), message, link, clock.now()));
             }
         }
+    }
+
+    /** Like {@link #notifyRole} but skips an account that already has an unread notice with the same link; returns the accounts that got one. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<Long> notifyRoleOnce(Role role, String message, String link) {
+        List<Long> notified = new java.util.ArrayList<>();
+        for (UserAccount account : accounts.findByRoleOrderByDisplayNameAsc(role)) {
+            if (account.isActive()
+                    && !notifications.existsByRecipientIdAndLinkAndReadAtIsNull(account.getId(), link)) {
+                notifications.save(new Notification(account.getId(), message, link, clock.now()));
+                notified.add(account.getId());
+            }
+        }
+        return notified;
+    }
+
+    /**
+     * The one person who gets the Veterinarian notices of a horse (BR-264, TECH-F5): the substitute while the return date
+     * has not come, else the main Veterinarian, else the Club Manager. An inactive person is skipped.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Long veterinarianOf(Horse horse) {
+        CareRole vet = CareRole.VETERINARIAN;
+        UserAccount temp = vet.temp(horse);
+        if (temp != null && temp.isActive() && vet.until(horse) != null && clock.today().isBefore(vet.until(horse))) {
+            return temp.getId();
+        }
+        UserAccount main = vet.main(horse);
+        if (main != null && main.isActive()) {
+            return main.getId();
+        }
+        return accounts.findByRoleOrderByDisplayNameAsc(Role.CLUB_MANAGER).stream().filter(UserAccount::isActive)
+                .map(UserAccount::getId).findFirst().orElse(null);
+    }
+
+    /** A notice that used to go to every Veterinarian, now to the Veterinarian of the horse; returns the recipient. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Long notifyVeterinarianOf(Horse horse, String message, String link) {
+        Long to = veterinarianOf(horse);
+        if (to != null) {
+            notifications.save(new Notification(to, message, link, clock.now()));
+        }
+        return to;
+    }
+
+    /** As {@link #notifyVeterinarianOf} but not again while the person has an unread notice with the same link; null then. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Long notifyVeterinarianOfOnce(Horse horse, String message, String link) {
+        Long to = veterinarianOf(horse);
+        if (to == null || notifications.existsByRecipientIdAndLinkAndReadAtIsNull(to, link)) {
+            return null;
+        }
+        notifications.save(new Notification(to, message, link, clock.now()));
+        return to;
     }
 
     /** One notification to one account, written in the caller's transaction (BR-116, TECH-063). */

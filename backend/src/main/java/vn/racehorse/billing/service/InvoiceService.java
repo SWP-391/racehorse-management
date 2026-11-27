@@ -171,7 +171,8 @@ public class InvoiceService {
         UserAccount owner = accounts.findById(ownerId).filter(a -> a.getRole() == Role.HORSE_OWNER)
                 .orElseThrow(() -> ApiException.invalid("INVALID_OWNER", "ownerId", "Chọn một chủ ngựa."));
         if (horseId != null) {
-            horses.findById(horseId).orElseThrow(() -> ApiException.invalid("INVALID_HORSE", "horseId", "Không tìm thấy ngựa."));
+            vn.racehorse.horse.service.HorseService.requireTakenIn(horses.findById(horseId)
+                    .orElseThrow(() -> ApiException.invalid("INVALID_HORSE", "horseId", "Không tìm thấy ngựa.")));
         }
         if (months.existsById(YearMonth.from(date).toString())) {
             throw new ApiException(HttpStatus.CONFLICT, "MONTH_CLOSED",

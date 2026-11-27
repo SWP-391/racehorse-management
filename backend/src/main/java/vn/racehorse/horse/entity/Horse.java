@@ -41,7 +41,21 @@ public class Horse {
     @Column(name = "coat_colour")
     private String coatColour;
 
-    private String breed;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "breed_id")
+    private Breed breed;
+
+    /** Waiting, taken in, refused or withdrawn; only ACCEPTED horses are managed (BR-245, TECH-B1). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "intake_state", nullable = false)
+    private IntakeState intakeState = IntakeState.PENDING;
+
+    @Column(name = "refusal_reason")
+    private String refusalReason;
+
+    /** The take-in moment; the daily fee starts on its club day (BR-179, TECH-B2). */
+    @Column(name = "accepted_at")
+    private Instant acceptedAt;
 
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "owner_id", nullable = false)
@@ -79,7 +93,7 @@ public class Horse {
     @Column(name = "photo_updated_at")
     private Instant photoUpdatedAt;
 
-    /** The one Head Trainer who writes training data of this horse (BR-152); null only for horses from before it. */
+    /** The one Head Trainer who writes training data of this horse (BR-152); null while the horse waits for take-in (BR-244). */
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "main_trainer_id")
     private UserAccount mainTrainer;
@@ -91,6 +105,30 @@ public class Horse {
 
     @Column(name = "temp_until")
     private LocalDate tempUntil;
+
+    /** The main Veterinarian and the Groom (BR-256); null while the horse is waiting or "Chưa gán" (BR-260). */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "vet_id")
+    private UserAccount vet;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "groom_id")
+    private UserAccount groom;
+
+    /** Substitutes until a date, as the temporary trainer; they do not count toward the limit (BR-257, BR-258). */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "temp_vet_id")
+    private UserAccount tempVet;
+
+    @Column(name = "temp_vet_until")
+    private LocalDate tempVetUntil;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "temp_groom_id")
+    private UserAccount tempGroom;
+
+    @Column(name = "temp_groom_until")
+    private LocalDate tempGroomUntil;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -115,7 +153,7 @@ public class Horse {
     }
 
     public void setProfile(String name, Sex sex, LocalDate birthDate, String coatColour,
-                    String breed, UserAccount owner, Instant now) {
+                    Breed breed, UserAccount owner, Instant now) {
         this.name = name;
         this.sex = sex;
         this.birthDate = birthDate;
@@ -125,8 +163,91 @@ public class Horse {
         this.updatedAt = now;
     }
 
+    public void accept(UserAccount trainer, UserAccount vet, UserAccount groom, Instant now) {
+        this.intakeState = IntakeState.ACCEPTED;
+        this.acceptedAt = now;
+        this.refusalReason = null;
+        this.mainTrainer = trainer;
+        this.vet = vet;
+        this.groom = groom;
+        this.updatedAt = now;
+    }
+
+    public void refuse(String reason, Instant now) {
+        this.intakeState = IntakeState.REFUSED;
+        this.refusalReason = reason;
+        this.updatedAt = now;
+    }
+
+    public void withdraw(Instant now) {
+        this.intakeState = IntakeState.WITHDRAWN;
+        this.updatedAt = now;
+    }
+
+    public boolean isTakenIn() {
+        return intakeState == IntakeState.ACCEPTED;
+    }
+
+    public IntakeState getIntakeState() {
+        return intakeState;
+    }
+
+    public String getRefusalReason() {
+        return refusalReason;
+    }
+
+    public Instant getAcceptedAt() {
+        return acceptedAt;
+    }
+
     public void setMainTrainer(UserAccount trainer, Instant now) {
         this.mainTrainer = trainer;
+        this.updatedAt = now;
+    }
+
+    public UserAccount getVet() {
+        return vet;
+    }
+
+    public UserAccount getGroom() {
+        return groom;
+    }
+
+    public UserAccount getTempVet() {
+        return tempVet;
+    }
+
+    public LocalDate getTempVetUntil() {
+        return tempVetUntil;
+    }
+
+    public UserAccount getTempGroom() {
+        return tempGroom;
+    }
+
+    public LocalDate getTempGroomUntil() {
+        return tempGroomUntil;
+    }
+
+    public void setVet(UserAccount vet, Instant now) {
+        this.vet = vet;
+        this.updatedAt = now;
+    }
+
+    public void setGroom(UserAccount groom, Instant now) {
+        this.groom = groom;
+        this.updatedAt = now;
+    }
+
+    public void substituteVet(UserAccount person, LocalDate until, Instant now) {
+        this.tempVet = person;
+        this.tempVetUntil = until;
+        this.updatedAt = now;
+    }
+
+    public void substituteGroom(UserAccount person, LocalDate until, Instant now) {
+        this.tempGroom = person;
+        this.tempGroomUntil = until;
         this.updatedAt = now;
     }
 
@@ -239,7 +360,7 @@ public class Horse {
         return coatColour;
     }
 
-    public String getBreed() {
+    public Breed getBreed() {
         return breed;
     }
 

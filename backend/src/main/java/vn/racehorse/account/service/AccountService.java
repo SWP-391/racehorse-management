@@ -74,6 +74,7 @@ public class AccountService {
                               List<GroomScheduleRangeInput> schedule) {
         AccountPrincipal actor = access.require(Permission.MANAGE_ACCOUNTS);
         Role role = singleRole(roles);
+        requireAssignable(role);
         String email = EmailAddress.parse(emailText).value();
         if (schedule != null && !schedule.isEmpty()) {
             if (role != Role.GROOM) {
@@ -211,6 +212,7 @@ public class AccountService {
     public UserAccount changeRole(Long id, List<Role> roles) {
         AccountPrincipal actor = access.require(Permission.MANAGE_ACCOUNTS);
         Role role = singleRole(roles);
+        requireAssignable(role);
         if (actor.id().equals(id)) {
             // P-06 (extends DEC-031): a Club Manager cannot change their own role.
             throw ApiException.invalid("SELF_ROLE_CHANGE", "id", "Không thể tự đổi vai trò của chính mình.");
@@ -261,6 +263,12 @@ public class AccountService {
             if (account.getRole() == Role.CLUB_MANAGER) {
                 requireAnotherClubManager(account, managers);
             }
+            if (account.getRole() == Role.HEAD_TRAINER) {
+                requireNoHorses(account);
+            }
+            if (account.getRole() == Role.VETERINARIAN || account.getRole() == Role.GROOM) {
+                requireNoCareHorses(account);
+            }
             account.deactivate();
             audit.record(actor, "ACCOUNT_DEACTIVATED", "ACCOUNT", account.getId(),
                     Map.of("email", account.emailForAudit()));
@@ -276,6 +284,42 @@ public class AccountService {
     private static void requireAnotherClubManager(UserAccount target, List<UserAccount> activeManagers) {
         if (activeManagers.stream().noneMatch(m -> !m.getId().equals(target.getId()))) {
             throw ApiException.invalid("LAST_CLUB_MANAGER", "id", "Hệ thống phải còn ít nhất một Quản lý CLB đang hoạt động.");
+        }
+    }
+
+    /** The Club Manager role is never given through the API: the club has exactly one (BR-240, BR-241, DEC-078). */
+    public static void requireAssignable(Role role) {
+        if (role == Role.CLUB_MANAGER) {
+            throw ApiException.invalid("CLUB_MANAGER_NOT_ASSIGNABLE", "roles",
+                    "Không thể gán vai trò Quản lý CLB: câu lạc bộ chỉ có một Quản lý CLB.");
+        }
+    }
+
+    /** BR-252: a Head Trainer who is main or temporary trainer of a horse is not deactivated before the hand-over. */
+    private void requireNoHorses(UserAccount trainer) {
+        List<String> horses = accounts.horseNamesHeldAsTrainer(trainer.getId());
+        if (!horses.isEmpty()) {
+            String message = "Huấn luyện viên này đang phụ trách ngựa: " + String.join(", ", horses)
+                    + ". Hãy bàn giao ngựa cho người khác trước khi vô hiệu hóa.";
+            // The names also come alone in "horses", so the screen can word the refusal itself.
+            throw new ApiException(HttpStatus.BAD_REQUEST, "TRAINER_HAS_HORSES", message,
+                    Map.of("horses", String.join(", ", horses)));
+        }
+    }
+
+    /**
+     * BR-259: a Veterinarian or a Groom who is main or substitute of a horse is not deactivated before the horses
+     * are moved; the message names the horses (AC-586, AC-616).
+     */
+    private void requireNoCareHorses(UserAccount person) {
+        List<String> horses = person.getRole() == Role.VETERINARIAN
+                ? accounts.horseNamesHeldAsVet(person.getId()) : accounts.horseNamesHeldAsGroom(person.getId());
+        if (!horses.isEmpty()) {
+            String who = person.getRole() == Role.VETERINARIAN ? "Bác sĩ thú y" : "Nhân viên chăm sóc";
+            String message = who + " này đang phụ trách ngựa: " + String.join(", ", horses)
+                    + ". Hãy chuyển ngựa cho người khác trước khi vô hiệu hóa.";
+            throw new ApiException(HttpStatus.BAD_REQUEST, "PERSON_HAS_HORSES", message,
+                    Map.of("horses", String.join(", ", horses)));
         }
     }
 

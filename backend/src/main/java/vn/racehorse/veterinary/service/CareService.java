@@ -1,5 +1,6 @@
 package vn.racehorse.veterinary.service;
 
+import vn.racehorse.security.HorseVisibility;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +39,7 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Periodic care items, completions, overrides, postponements and the due lists (REQ-016, BR-061 to BR-064). A
@@ -49,6 +51,7 @@ public class CareService {
 
     static final int DUE_SOON_DAYS = 7;
 
+    private final HorseVisibility visibility;
     private final CareItemRepository items;
     private final CareEventRepository events;
     private final HorseRepository horses;
@@ -61,7 +64,8 @@ public class CareService {
 
     public CareService(CareItemRepository items, CareEventRepository events, HorseRepository horses,
                        UserAccountRepository accounts, AccessGuard access, AuditService audit, ClubClock clock,
-                       SupplyItemRepository supplies, StockService stock) {
+                       SupplyItemRepository supplies, StockService stock, HorseVisibility visibility) {
+        this.visibility = visibility;
         this.supplies = supplies;
         this.stock = stock;
         this.items = items;
@@ -91,6 +95,7 @@ public class CareService {
     public List<CareDueView> forHorse(Long horseId) {
         access.require(Permission.MANAGE_CARE);
         Horse horse = horse(horseId);
+        vn.racehorse.horse.service.HorseService.requireTakenIn(horse);
         return items.findByHorseIdOrderByNextDueAscIdAsc(horseId).stream()
                 .map(i -> new CareDueView(i, horse, stateOf(i))).toList();
     }
@@ -99,7 +104,10 @@ public class CareService {
     @Transactional(readOnly = true)
     public List<CareDueView> dueList() {
         access.require(Permission.MANAGE_CARE);
+        // Only the items of horses the Veterinarian looks after (BR-261).
+        Set<Long> seen = visibility.visibleIds();
         return items.findByNextDueLessThanEqualOrderByNextDueAscIdAsc(today().plusDays(DUE_SOON_DAYS)).stream()
+                .filter(i -> seen.contains(i.getHorseId()))
                 .map(i -> new CareDueView(i, horse(i.getHorseId()), stateOf(i)))
                 .filter(v -> !v.horse().isArchived()).toList();
     }
@@ -142,6 +150,7 @@ public class CareService {
     public CareItem create(Long horseId, CareItemInput in) {
         AccountPrincipal actor = access.require(Permission.MANAGE_CARE);
         Horse horse = horse(horseId);
+        vn.racehorse.horse.service.HorseService.requireTakenIn(horse);
         if (horse.isArchived()) {
             throw new ApiException(HttpStatus.CONFLICT, "HORSE_ARCHIVED", "Ngựa đã ngừng quản lý: không thể thêm lịch chăm sóc.");
         }
@@ -302,11 +311,13 @@ public class CareService {
     }
 
     private CareItem item(Long itemId) {
-        return items.findById(itemId).orElseThrow(() -> ApiException.notFound("mục chăm sóc"));
+        CareItem item = items.findById(itemId).orElseThrow(() -> ApiException.notFound("mục chăm sóc"));
+        visibility.require(item.getHorseId());
+        return item;
     }
 
     private Horse horse(Long horseId) {
-        return horses.findById(horseId).orElseThrow(() -> ApiException.notFound("ngựa"));
+        return visibility.require(horseId);
     }
 
     private static String blank(String v) {

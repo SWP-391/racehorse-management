@@ -38,4 +38,8 @@ public final class DomainEvents {
     /** The Club Manager archived the horse. */
     public record HorseArchived(Long horseId) {
     }
+
+    /** The Veterinarian changed the horse's health status (BR-249: the ration may no longer fit). */
+    public record HealthStatusChanged(Long horseId, String to) {
+    }
 }

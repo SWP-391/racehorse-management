@@ -1,5 +1,6 @@
 package vn.racehorse.video.service;
 
+import vn.racehorse.security.HorseVisibility;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -57,6 +58,7 @@ public class TrialVideoService {
     private static final Set<SessionState> COMPLETED = EnumSet.of(SessionState.COMPLETED, SessionState.AUTO_CLOSED);
     private static final byte[] FTYP = "ftyp".getBytes(StandardCharsets.US_ASCII);
 
+    private final HorseVisibility visibility;
     private final TrialVideoRepository videos;
     private final TrainingSessionRepository sessions;
     private final HorseRepository horses;
@@ -69,7 +71,8 @@ public class TrialVideoService {
 
     public TrialVideoService(TrialVideoRepository videos, TrainingSessionRepository sessions, HorseRepository horses,
                              UserAccountRepository accounts, VideoStorage storage, AccessGuard access,
-                             AuditService audit, ClubClock clock, TransactionTemplate tx) {
+                             AuditService audit, ClubClock clock, TransactionTemplate tx, HorseVisibility visibility) {
+        this.visibility = visibility;
         this.videos = videos;
         this.sessions = sessions;
         this.horses = horses;
@@ -93,7 +96,7 @@ public class TrialVideoService {
         }
         TrainingSession session = sessions.findById(sessionId).orElseThrow(() -> ApiException.notFound("buổi tập"));
         access.requireTrainerOf(Permission.MANAGE_TRIAL_VIDEOS, session.getHorseId());
-        Horse horse = horses.findById(session.getHorseId()).orElseThrow(() -> ApiException.notFound("ngựa"));
+        Horse horse = visibility.require(session.getHorseId());
         requireAccepting(session, horse);
         if (file.getSize() > MAX_BYTES) {
             throw ApiException.invalid("VIDEO_TOO_LARGE", "file", TOO_LARGE);
@@ -209,13 +212,9 @@ public class TrialVideoService {
         requireOwnerScope(user, horseId);
     }
 
-    /** An Owner watches only the horses they own now (BR-106, BR-006). */
+    /** A person watches only the videos of horses they may see: an owner their own, a Head Trainer theirs (BR-106, BR-261). */
     private void requireOwnerScope(AccountPrincipal user, Long horseId) {
-        if (user.role() != Role.HORSE_OWNER) return;
-        Horse horse = horses.findById(horseId).orElseThrow(() -> ApiException.notFound("ngựa"));
-        if (!Objects.equals(horse.getOwner().getId(), user.id())) {
-            throw ApiException.forbidden();
-        }
+        visibility.require(horseId);
     }
 
     /** ISO base media files (MP4) carry the box type "ftyp" at bytes 4 to 7 (TECH-054). */

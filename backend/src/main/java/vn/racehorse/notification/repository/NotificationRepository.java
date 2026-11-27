@@ -14,4 +14,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 
     /** Unread notices of one person that point at one link, cleared when the target is opened (BR-233). */
     List<Notification> findByRecipientIdAndLinkAndReadAtIsNull(Long recipientId, String link);
+
+    /** True when the person already has the same message unread (same link, so one open notice per horse). */
+    boolean existsByRecipientIdAndLinkAndReadAtIsNull(Long recipientId, String link);
 }

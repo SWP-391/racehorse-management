@@ -1,5 +1,6 @@
 package vn.racehorse.horse.service;
 
+import vn.racehorse.security.HorseVisibility;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -30,14 +31,18 @@ import java.util.Objects;
 @Service
 public class HorseTrainerService {
 
+    private final HorseVisibility visibility;
     private final HorseRepository horses;
     private final UserAccountRepository accounts;
     private final AuditService audit;
     private final NotificationService notifications;
     private final ClubClock clock;
+    private final CareTeamLimit limit;
 
     public HorseTrainerService(HorseRepository horses, UserAccountRepository accounts, AuditService audit,
-                               NotificationService notifications, ClubClock clock) {
+                               NotificationService notifications, ClubClock clock, CareTeamLimit limit, HorseVisibility visibility) {
+        this.visibility = visibility;
+        this.limit = limit;
         this.horses = horses;
         this.accounts = accounts;
         this.audit = audit;
@@ -92,7 +97,8 @@ public class HorseTrainerService {
      */
     @Transactional(readOnly = true)
     public void requireWriter(AccountPrincipal user, Long horseId) {
-        Horse horse = find(horseId);
+        // A horse the person may not see answers as not found, never as refused (BR-153, BR-261).
+        Horse horse = visibility.require(horseId);
         if (!canWrite(horse, user)) {
             UserAccount trainer = effectiveTrainer(horse);
             String who = trainer == null ? "chưa có HLV" : "HLV " + trainer.getDisplayName();
@@ -114,15 +120,11 @@ public class HorseTrainerService {
 
     // ---- assign, hand over, lend (PERM-045) ----------------------------------------------------------------
 
-    /** Registration: the trainer chosen by the Club Manager becomes the main trainer, no handover notice (BR-152). */
-    void setAtRegistration(Horse horse, UserAccount trainer) {
-        horse.setMainTrainer(trainer, clock.now());
-    }
-
     /** Changes the main trainer: plans, sessions and history stay as they are; both trainers are told (BR-155). */
     @Transactional
     public Horse handOver(AccountPrincipal actor, Long horseId, Long trainerId) {
         Horse horse = find(horseId);
+        HorseService.requireTakenIn(horse);
         requireNotArchived(horse);
         UserAccount next = requireTrainerAccount(trainerId, "trainerId");
         UserAccount before = horse.getMainTrainer();
@@ -130,6 +132,8 @@ public class HorseTrainerService {
             return horse;
         }
         UserAccount effectiveBefore = effectiveTrainer(horse);
+        // The new main trainer must have room (BR-256, BR-257); a temporary trainer never counts.
+        limit.requireRoom(vn.racehorse.horse.entity.CareRole.HEAD_TRAINER, next, 1);
         horse.setMainTrainer(next, clock.now());
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("from", before == null ? null : before.getId());
@@ -153,6 +157,7 @@ public class HorseTrainerService {
     @Transactional
     public Horse lend(AccountPrincipal actor, Long horseId, Long trainerId, LocalDate until) {
         Horse horse = find(horseId);
+        HorseService.requireTakenIn(horse);
         requireNotArchived(horse);
         UserAccount temporary = requireTrainerAccount(trainerId, "trainerId");
         if (horse.getMainTrainer() != null && horse.getMainTrainer().getId().equals(temporary.getId())) {
@@ -188,6 +193,7 @@ public class HorseTrainerService {
     @Transactional
     public Horse endLoanEarly(AccountPrincipal actor, Long horseId) {
         Horse horse = find(horseId);
+        HorseService.requireTakenIn(horse);
         if (horse.getTempTrainer() == null) {
             return horse;
         }

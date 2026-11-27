@@ -3,6 +3,8 @@ package vn.racehorse.ration.entity;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -44,6 +46,13 @@ public class RationVersion {
     @Column(name = "saved_at", nullable = false)
     private Instant savedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "condition_tag", nullable = false)
+    private RationTag conditionTag = RationTag.NORMAL;
+
+    @Column(name = "mismatch_reason")
+    private String mismatchReason;
+
     @OneToMany(mappedBy = "version", cascade = CascadeType.PERSIST, fetch = FetchType.EAGER)
     @OrderBy("position ASC")
     private List<RationMeal> meals = new ArrayList<>();
@@ -59,6 +68,11 @@ public class RationVersion {
         this.savedAt = savedAt;
     }
 
+    public void tag(RationTag tag, String mismatchReason) {
+        this.conditionTag = tag;
+        this.mismatchReason = mismatchReason;
+    }
+
     public void addMeal(RationMeal meal) {
         meals.add(meal);
     }
@@ -69,5 +83,7 @@ public class RationVersion {
     public LocalDate getEffectiveDate() { return effectiveDate; }
     public UserAccount getSavedBy() { return savedBy; }
     public Instant getSavedAt() { return savedAt; }
+    public RationTag getConditionTag() { return conditionTag; }
+    public String getMismatchReason() { return mismatchReason; }
     public List<RationMeal> getMeals() { return meals; }
 }
